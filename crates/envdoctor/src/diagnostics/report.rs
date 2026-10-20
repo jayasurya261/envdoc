@@ -120,3 +120,4 @@ mod tests {
         assert_eq!(io_report.exit_code(Severity::Warning), 3);
     }
 }
+

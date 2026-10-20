@@ -50,3 +50,4 @@ mod tests {
         assert!(!Severity::Note.is_at_least(Severity::Warning));
     }
 }
+

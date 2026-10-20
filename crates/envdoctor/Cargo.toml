@@ -16,6 +16,10 @@ name = "envdoctor"
 path = "src/main.rs"
 
 [dependencies]
+oxc_allocator = { workspace = true }
+oxc_ast = { workspace = true }
+oxc_parser = { workspace = true }
+oxc_span = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }
 

@@ -189,10 +189,10 @@ flowchart TD
 ---
 
 ### Phase 4: JavaScript & TypeScript AST Scanner (`scan::js`)
-- [ ] **Step 4.1: Oxc Parser Adapter**
+- [x] **Step 4.1: Oxc Parser Adapter**
   - Encapsulate `oxc_parser`, `oxc_allocator`, and `oxc_ast` behind internal `scan::js::scan_source` function.
   - Guarantee that no `oxc` types leak into the public API.
-- [ ] **Step 4.2: AST Visitor for Access Patterns**
+- [x] **Step 4.2: AST Visitor for Access Patterns**
   - Implement AST visitor extracting:
     1. Member expression: `process.env.VAR_NAME`, `import.meta.env.VAR_NAME`.
     2. Bracket access with literal: `process.env['VAR_NAME']`, `process.env["VAR_NAME"]`.
@@ -202,9 +202,9 @@ flowchart TD
     6. Optional chaining: `process.env?.VAR_NAME`.
     7. Dynamic bracket access: `process.env[dynamicVar]` -> Emit `ENV010` (unresolved).
     8. Whole-object aliasing: `const myEnv = process.env` -> Emit `ENV012`.
-- [ ] **Step 4.3: Comments & String Shielding**
+- [x] **Step 4.3: Comments & String Shielding**
   - Guarantee that string literals and comments containing `process.env.FOO` are never recognized as references.
-- [ ] **Step 4.4: Recovery from Parse Errors**
+- [x] **Step 4.4: Recovery from Parse Errors**
   - In files with syntax errors, capture partial AST if possible; emit `ENV011` (source-parse-problem) and mark scan incomplete without crashing.
 
 ---

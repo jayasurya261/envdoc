@@ -46,3 +46,4 @@ impl Contract {
             .collect()
     }
 }
+

@@ -12,6 +12,7 @@ pub mod dialect;
 pub mod model;
 pub mod redaction;
 pub mod rules;
+pub mod scan;
 
 pub use diagnostics::{Diagnostic, DiagnosticCode, Report, Severity, Summary};
 pub use dialect::{parse, DialectDiagnostic, ParseOutput};
@@ -20,3 +21,4 @@ pub use model::{
 };
 pub use redaction::RawEnvValue;
 pub use rules::{evaluate_contract, AuditOptions, Contract};
+pub use scan::{scan_source, ScanResult};

@@ -191,3 +191,4 @@ pub fn evaluate_contract(
 
     diagnostics
 }
+
