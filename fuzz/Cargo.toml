@@ -16,3 +16,4 @@ name = "fuzz_dialect"
 path = "fuzz_targets/fuzz_dialect.rs"
 test = false
 doc = false
+

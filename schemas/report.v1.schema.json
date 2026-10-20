@@ -1,0 +1,171 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/envdoctor/envdoctor/schemas/report.v1.schema.json",
+  "title": "EnvDoctor Report Schema v1",
+  "description": "Output schema for EnvDoctor environment contract auditor reports.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "tool_name",
+    "tool_version",
+    "summary",
+    "diagnostics"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1,
+      "description": "Schema format version"
+    },
+    "tool_name": {
+      "type": "string",
+      "description": "Tool name emitting the report"
+    },
+    "tool_version": {
+      "type": "string",
+      "description": "SemVer version of the tool"
+    },
+    "summary": {
+      "type": "object",
+      "required": [
+        "scanned_files",
+        "skipped_files",
+        "total_errors",
+        "total_warnings",
+        "total_notes",
+        "complete"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "scanned_files": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "skipped_files": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "total_errors": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "total_warnings": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "total_notes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "complete": {
+          "type": "boolean"
+        }
+      }
+    },
+    "diagnostics": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "code",
+          "severity",
+          "message",
+          "locations"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "ENV001",
+              "ENV002",
+              "ENV003",
+              "ENV004",
+              "ENV005",
+              "ENV006",
+              "ENV007",
+              "ENV010",
+              "ENV011",
+              "ENV012",
+              "ENV020",
+              "ENV021",
+              "IO001",
+              "IO002",
+              "IO003",
+              "IO010"
+            ]
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "note",
+              "warning",
+              "error"
+            ]
+          },
+          "message": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          },
+          "locations": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "path",
+                "span"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "span": {
+                  "type": "object",
+                  "required": [
+                    "line",
+                    "column",
+                    "start_offset",
+                    "end_offset"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "line": {
+                      "type": "integer",
+                      "minimum": 1
+                    },
+                    "column": {
+                      "type": "integer",
+                      "minimum": 1
+                    },
+                    "start_offset": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "end_offset": {
+                      "type": "integer",
+                      "minimum": 0
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "evidence": {
+            "type": "string",
+            "enum": [
+              "direct-member",
+              "bracket-literal",
+              "destructured",
+              "dynamic-unresolved",
+              "whole-object-escape"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

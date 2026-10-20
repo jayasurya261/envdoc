@@ -7,3 +7,4 @@ fuzz_target!(|data: &[u8]| {
         let _ = envdoctor::parse(s, ".env");
     }
 });
+

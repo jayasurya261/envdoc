@@ -171,19 +171,19 @@ flowchart TD
 ---
 
 ### Phase 3: Diagnostics & Rules Engine (`diagnostics/`, `rules/`)
-- [ ] **Step 3.1: Serializable Diagnostic & Report System**
+- [x] **Step 3.1: Serializable Diagnostic & Report System**
   - Implement `Diagnostic` struct (code, severity, name, locations, message, evidence).
   - Implement `Summary` (scanned files count, skipped files, total errors, `complete: bool`).
   - Implement `Report` with `schema_version = 1` and `tool_version`.
   - Generate and validate `schemas/report.v1.schema.json`.
-- [ ] **Step 3.2: Rules Engine Implementation**
+- [x] **Step 3.2: Rules Engine Implementation**
   - Pure function: `evaluate_contract(contract: &Contract, definitions: &[Definition], references: &[Reference]) -> Vec<Diagnostic>`.
   - **Rule 1 (`ENV001`)**: Reference found in code without corresponding contract definition.
   - **Rule 2 (`ENV002`)**: Contract definition not present in references.
   - **Rule 3 (`ENV003`)**: Contract definition missing from provided `.env` (skipped or downgraded if definition has `@optional`).
   - **Rule 4 (`ENV007`)**: Variable in `.env` has empty value when contract definition is not optional.
   - **Rule 5 (`ENV020`/`ENV021`)**: Contract missing or empty.
-- [ ] **Step 3.3: Deterministic Sorting**
+- [x] **Step 3.3: Deterministic Sorting**
   - Implement strict ordering on diagnostics: `path` -> `line` -> `column` -> `code` -> `name`.
 
 ---

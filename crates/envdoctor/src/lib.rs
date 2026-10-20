@@ -7,12 +7,16 @@
 
 pub const NAME: &str = "envdoctor";
 
+pub mod diagnostics;
 pub mod dialect;
 pub mod model;
 pub mod redaction;
+pub mod rules;
 
-pub use dialect::{parse, DiagnosticCode, DialectDiagnostic, ParseOutput, Severity};
+pub use diagnostics::{Diagnostic, DiagnosticCode, Report, Severity, Summary};
+pub use dialect::{parse, DialectDiagnostic, ParseOutput};
 pub use model::{
     Definition, EnvName, EvidenceKind, Location, Reference, RelPath, Span, ValueKind,
 };
 pub use redaction::RawEnvValue;
+pub use rules::{evaluate_contract, AuditOptions, Contract};
