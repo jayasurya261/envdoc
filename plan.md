@@ -210,24 +210,24 @@ flowchart TD
 ---
 
 ### Phase 5: File Discovery, Engine Orchestration & CLI
-- [ ] **Step 5.1: File Discovery with `ignore` Crate (`discover.rs`)**
+- [x] **Step 5.1: File Discovery with `ignore` Crate (`discover.rs`)**
   - Walk directory trees respecting `.gitignore` and `.ignore`.
   - Do not follow symlinks by default (`follow_symlinks: false`).
   - Ignore standard build/vendor folders: `node_modules/`, `target/`, `dist/`, `build/`, `.next/`, `.git/`.
   - Allow manual override with `--include-ignored`.
-- [ ] **Step 5.2: Safe Bounds & Limits**
+- [x] **Step 5.2: Safe Bounds & Limits**
   - Max file size limit (default: 2 MB per file).
   - Max total file count (default: 10,000 files).
   - Max directory recursion depth (default: 30).
   - Emit `IO010` (limit-exceeded) if bounds are surpassed, setting `complete: false`.
-- [ ] **Step 5.3: Orchestration Engine (`engine.rs`)**
+- [x] **Step 5.3: Orchestration Engine (`engine.rs`)**
   - Pure/Impure boundary: read files boundedly into memory, verify valid UTF-8 (emit `IO002` if invalid), pass text buffers into `dialect` and `scan`.
   - Collect diagnostics, apply deterministic sorting, construct final `Report`.
-- [ ] **Step 5.4: Format Renderers (`render/`)**
+- [x] **Step 5.4: Format Renderers (`render/`)**
   - `render/human.rs`: Formatted terminal output with file locations, ANSI colors (configurable `--color`), clean code badges, and advice hints.
   - `render/json.rs`: Strict JSON serialization matching JSON schema.
   - Stream separation: Pure report to `stdout`, operational/progress logs to `stderr`.
-- [ ] **Step 5.5: CLI Interface with `clap` (`cli.rs`, `main.rs`)**
+- [x] **Step 5.5: CLI Interface with `clap` (`cli.rs`, `main.rs`)**
   - Arguments:
     - `--contract <PATH>` (default: `.env.example`)
     - `--env <PATH>` (optional real `.env` file to audit)

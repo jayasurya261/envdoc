@@ -1,6 +1,8 @@
+use crate::diagnostics::diagnostic::Diagnostic;
 pub use crate::diagnostics::{DiagnosticCode, Severity};
 use crate::model::name::EnvName;
-use crate::model::span::Span;
+use crate::model::path::RelPath;
+use crate::model::span::{Location, Span};
 use serde::{Deserialize, Serialize};
 
 /// A diagnostic emitted during dialect parsing.
@@ -33,5 +35,17 @@ impl DialectDiagnostic {
             span,
             key,
         }
+    }
+
+    /// Converts a dialect-specific diagnostic into a standard report `Diagnostic`.
+    pub fn into_diagnostic(self, path: RelPath) -> Diagnostic {
+        Diagnostic::new(
+            self.code,
+            self.severity,
+            self.message,
+            self.key,
+            vec![Location::new(path, self.span)],
+            None,
+        )
     }
 }
