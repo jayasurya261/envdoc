@@ -1,0 +1,14 @@
+disallowed-methods = [
+    { path = "std::fs::read", reason = "Core modules must be pure in-memory functions; all I/O belongs in discover/engine." },
+    { path = "std::fs::read_to_string", reason = "Core modules must be pure in-memory functions; all I/O belongs in discover/engine." },
+    { path = "std::fs::write", reason = "Core modules must be pure in-memory functions; all I/O belongs in discover/engine." },
+    { path = "std::fs::File::open", reason = "Core modules must be pure in-memory functions; all I/O belongs in discover/engine." },
+    { path = "std::fs::File::create", reason = "Core modules must be pure in-memory functions; all I/O belongs in discover/engine." },
+    { path = "std::fs::read_dir", reason = "Core modules must be pure in-memory functions; all I/O belongs in discover/engine." },
+    { path = "std::fs::copy", reason = "Core modules must be pure in-memory functions; all I/O belongs in discover/engine." },
+    { path = "std::fs::remove_file", reason = "Core modules must be pure in-memory functions; all I/O belongs in discover/engine." },
+    { path = "std::fs::remove_dir", reason = "Core modules must be pure in-memory functions; all I/O belongs in discover/engine." },
+    { path = "std::fs::create_dir", reason = "Core modules must be pure in-memory functions; all I/O belongs in discover/engine." },
+    { path = "std::fs::create_dir_all", reason = "Core modules must be pure in-memory functions; all I/O belongs in discover/engine." },
+]
+

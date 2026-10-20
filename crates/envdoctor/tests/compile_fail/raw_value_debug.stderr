@@ -1,0 +1,9 @@
+error[E0277]: `RawEnvValue` doesn't implement `Debug`
+ --> tests/compile_fail/raw_value_debug.rs:6:22
+  |
+6 |     println!("{:?}", val);
+  |               ----   ^^^ `RawEnvValue` cannot be formatted using `{:?}` because it doesn't implement `Debug`
+  |               |
+  |               required by this formatting parameter
+  |
+  = help: the trait `Debug` is not implemented for `RawEnvValue`
