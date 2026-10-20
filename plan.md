@@ -150,7 +150,7 @@ flowchart TD
 ---
 
 ### Phase 2: Dialect Parser (`dialect/`)
-- [ ] **Step 2.1: Hand-written Tokenizer and Parser**
+- [x] **Step 2.1: Hand-written Tokenizer and Parser**
   - Implement state machine handling:
     - Variable assignment: optional `export `, unquoted/single/double quoted keys and values.
     - Strict ASCII key validation (`[A-Za-z_][A-Za-z0-9_]*`), emitting `ENV005` on violation.
@@ -158,12 +158,12 @@ flowchart TD
     - Escapes in double quotes (`\n`, `\r`, `\t`, `\\`, `\"`).
     - Multi-line quoted strings (tracking line numbers accurately across newlines).
     - `# @optional` doc-comment annotations on preceding line.
-- [ ] **Step 2.2: Unsupported Constructs Detection**
+- [x] **Step 2.2: Unsupported Constructs Detection**
   - Recognize variable expansion (`$VAR`, `${VAR}`) and command substitution (`$(command)`).
   - Emit `ENV006` (unsupported-syntax) while preserving key identification.
-- [ ] **Step 2.3: Duplicate Key Tracking**
+- [x] **Step 2.3: Duplicate Key Tracking**
   - Track seen keys per file, emitting `ENV004` on duplicate occurrences (last definition wins).
-- [ ] **Step 2.4: Dialect Parser Verification**
+- [x] **Step 2.4: Dialect Parser Verification**
   - Implement table-driven unit tests for all RFC/dialect cases.
   - Implement property-based testing with `proptest` ensuring parser never panics on arbitrary byte strings.
   - Set up `cargo-fuzz` target in `fuzz/fuzz_targets/fuzz_dialect.rs`.
