@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "tool_name": "envdoctor",
+  "tool_version": "0.1.0",
+  "summary": {
+    "scanned_files": 2,
+    "skipped_files": 0,
+    "total_errors": 0,
+    "total_warnings": 0,
+    "total_notes": 2,
+    "complete": true
+  },
+  "diagnostics": [
+    {
+      "code": "ENV012",
+      "severity": "note",
+      "message": "Object spread element captures entire environment object",
+      "locations": [
+        {
+          "path": "fixtures/conformance/02_mixed_js_ts_dynamic/src/legacy.js",
+          "span": {
+            "line": 1,
+            "column": 19,
+            "start_offset": 18,
+            "end_offset": 32
+          }
+        }
+      ],
+      "evidence": "whole-object-escape"
+    },
+    {
+      "code": "ENV010",
+      "severity": "note",
+      "message": "Dynamic access pattern process.env[...] cannot be statically resolved",
+      "locations": [
+        {
+          "path": "fixtures/conformance/02_mixed_js_ts_dynamic/src/main.ts",
+          "span": {
+            "line": 3,
+            "column": 13,
+            "start_offset": 81,
+            "end_offset": 100
+          }
+        }
+      ],
+      "evidence": "dynamic-unresolved"
+    }
+  ]
+}

@@ -216,12 +216,9 @@ impl<'a> Parser<'a> {
             );
             self.diagnostics.push(DialectDiagnostic::new(
                 DiagnosticCode::ENV005,
-                format!(
-                    "Invalid environment variable name '{}': must match [A-Za-z_][A-Za-z0-9_]*",
-                    key_str
-                ),
+                "Malformed line: invalid environment variable name (must match [A-Za-z_][A-Za-z0-9_]*)",
                 span,
-                Some(env_name.clone()),
+                None,
             ));
             self.skip_to_eol();
             self.is_optional_pending = false;
@@ -240,9 +237,9 @@ impl<'a> Parser<'a> {
             );
             self.diagnostics.push(DialectDiagnostic::new(
                 DiagnosticCode::ENV005,
-                format!("Expected '=' after variable name '{}'", key_str),
+                "Malformed line: expected '=' assignment delimiter",
                 span,
-                Some(env_name),
+                None,
             ));
             self.skip_to_eol();
             self.is_optional_pending = false;

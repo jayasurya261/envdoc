@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "tool_name": "envdoctor",
+  "tool_version": "0.1.0",
+  "summary": {
+    "scanned_files": 2,
+    "skipped_files": 0,
+    "total_errors": 0,
+    "total_warnings": 0,
+    "total_notes": 0,
+    "complete": true
+  },
+  "diagnostics": []
+}

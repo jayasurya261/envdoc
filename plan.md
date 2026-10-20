@@ -240,7 +240,7 @@ flowchart TD
 ---
 
 ### Phase 6: Redaction Validation & MVP Release (M2 Gate)
-- [ ] **Step 6.1: Canary Secret Leakage Testing Suite (`tests/redaction.rs`)**
+- [x] **Step 6.1: Canary Secret Leakage Testing Suite (`tests/redaction.rs`)**
   - Construct comprehensive test fixtures with synthetic high-entropy canary strings:
     `SUPER_SECRET_CANARY_VALUE_XYZ_987654321`.
   - Execute end-to-end CLI runs across:
@@ -250,7 +250,7 @@ flowchart TD
     - Dynamic access patterns
     - CLI crashes and forced panic unwinds
   - Assert that stdout, stderr, and JSON outputs NEVER contain the canary string.
-- [ ] **Step 6.2: Conformance Suite (`fixtures/conformance/`)**
+- [x] **Step 6.2: Conformance Suite (`fixtures/conformance/`)**
   - Create standardized test corpus with expected `report.json` outputs for:
     - Pure TypeScript project
     - Mixed JS/TS project with dynamic access

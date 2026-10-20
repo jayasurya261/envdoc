@@ -1,0 +1,75 @@
+{
+  "schema_version": 1,
+  "tool_name": "envdoctor",
+  "tool_version": "0.1.0",
+  "summary": {
+    "scanned_files": 1,
+    "skipped_files": 0,
+    "total_errors": 1,
+    "total_warnings": 1,
+    "total_notes": 1,
+    "complete": true
+  },
+  "diagnostics": [
+    {
+      "code": "ENV007",
+      "severity": "warning",
+      "message": "Environment variable 'REQUIRED_EMPTY' in .env has empty value but is not marked optional in contract",
+      "key": "REQUIRED_EMPTY",
+      "locations": [
+        {
+          "path": "fixtures/conformance/03_missing_vs_optional/.env",
+          "span": {
+            "line": 2,
+            "column": 1,
+            "start_offset": 27,
+            "end_offset": 43
+          }
+        },
+        {
+          "path": "fixtures/conformance/03_missing_vs_optional/.env.example",
+          "span": {
+            "line": 3,
+            "column": 1,
+            "start_offset": 47,
+            "end_offset": 78
+          }
+        }
+      ]
+    },
+    {
+      "code": "ENV003",
+      "severity": "error",
+      "message": "Required environment variable 'REQUIRED_MISSING' declared in contract is absent from .env",
+      "key": "REQUIRED_MISSING",
+      "locations": [
+        {
+          "path": "fixtures/conformance/03_missing_vs_optional/.env.example",
+          "span": {
+            "line": 2,
+            "column": 1,
+            "start_offset": 23,
+            "end_offset": 47
+          }
+        }
+      ]
+    },
+    {
+      "code": "ENV003",
+      "severity": "note",
+      "message": "Optional variable 'OPTIONAL_MISSING' declared in contract is absent from .env",
+      "key": "OPTIONAL_MISSING",
+      "locations": [
+        {
+          "path": "fixtures/conformance/03_missing_vs_optional/.env.example",
+          "span": {
+            "line": 5,
+            "column": 1,
+            "start_offset": 90,
+            "end_offset": 122
+          }
+        }
+      ]
+    }
+  ]
+}
