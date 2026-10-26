@@ -193,7 +193,9 @@ pub fn scan_source(source_text: &str, path: impl Into<RelPath>) -> ScanResult {
 
     // Deterministically sort diagnostics & references
     Diagnostic::sort_diagnostics(&mut scanner.diagnostics);
-    scanner.references.sort_by(|a, b| a.location.cmp(&b.location));
+    scanner
+        .references
+        .sort_by(|a, b| a.location.cmp(&b.location));
 
     ScanResult {
         references: scanner.references,

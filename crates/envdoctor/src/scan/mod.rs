@@ -3,8 +3,8 @@
 pub mod js;
 pub mod rust;
 
-pub use js::ScanResult;
 use crate::model::path::RelPath;
+pub use js::ScanResult;
 
 /// Unified entry point to scan source code for environment variable accesses.
 ///
