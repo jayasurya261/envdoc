@@ -7,10 +7,15 @@ members = [
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
-rust-version = "1.97.0"
+rust-version = "1.80.0"
 license = "MIT OR Apache-2.0"
-authors = ["EnvDoctor Contributors"]
-repository = "https://github.com/envdoctor/envdoctor"
+authors = ["Jayasurya <jayasurya261>"]
+repository = "https://github.com/jayasurya261/envdoc"
+homepage = "https://github.com/jayasurya261/envdoc"
+description = "Fast, safe-by-construction AST auditor keeping .env.example in sync with Rust & TypeScript source code"
+readme = "README.md"
+keywords = ["env", "dotenv", "cli", "static-analysis", "audit"]
+categories = ["command-line-utilities", "development-tools"]
 
 [workspace.dependencies]
 clap = { version = "4.5", features = ["derive"] }
