@@ -28,7 +28,9 @@ pub struct ScanResult {
 pub fn scan_source(source_text: &str, path: impl Into<RelPath>) -> ScanResult {
     let rel_path = path.into();
     let allocator = Allocator::default();
-    let source_type = SourceType::from_path(rel_path.as_path()).unwrap_or_default();
+    let source_type = SourceType::from_path(rel_path.as_path())
+        .unwrap_or_default()
+        .with_jsx(true);
 
     let ret = Parser::new(&allocator, source_text, source_type).parse();
 
