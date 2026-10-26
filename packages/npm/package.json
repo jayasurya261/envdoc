@@ -1,35 +1,45 @@
 {
   "name": "envdoc-cli",
   "version": "0.1.0",
-  "description": "Fast, safe-by-construction AST environment contract auditor keeping .env.example in sync with Rust, TypeScript, and JavaScript source code",
+  "description": "Fast, safe-by-construction AST environment contract auditor keeping .env.example in sync with Rust, TypeScript, and JavaScript source code.",
+  "main": "./bin/envdoctor.js",
   "bin": {
-    "envdoctor": "./bin/envdoctor.js",
-    "envdoc": "./bin/envdoctor.js"
+    "envdoc": "./bin/envdoctor.js",
+    "envdoctor": "./bin/envdoctor.js"
   },
   "files": [
     "bin",
-    "README.md"
+    "README.md",
+    "LICENSE-MIT",
+    "LICENSE-APACHE"
   ],
   "keywords": [
     "env",
     "dotenv",
+    "envdoc",
+    "envdoctor",
     "cli",
     "static-analysis",
     "audit",
-    "rust",
+    "contract",
     "typescript",
     "javascript",
-    "ci"
+    "rust",
+    "ci",
+    "security"
   ],
-  "author": "Jayasurya <jayasurya261>",
+  "author": "Jayasurya <jayasurya261> (https://github.com/jayasurya261)",
   "license": "MIT OR Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "https://github.com/jayasurya261/envdoc.git"
+    "url": "git+https://github.com/jayasurya261/envdoc.git"
   },
   "bugs": {
     "url": "https://github.com/jayasurya261/envdoc/issues"
   },
-  "homepage": "https://github.com/jayasurya261/envdoc#readme"
+  "homepage": "https://github.com/jayasurya261/envdoc#readme",
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "preferGlobal": true
 }
-
