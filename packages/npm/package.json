@@ -1,0 +1,34 @@
+{
+  "name": "envdoctor-cli",
+  "version": "0.1.0",
+  "description": "Fast, safe-by-construction AST environment contract auditor keeping .env.example in sync with Rust, TypeScript, and JavaScript source code",
+  "bin": {
+    "envdoctor": "./bin/envdoctor.js",
+    "envdoc": "./bin/envdoctor.js"
+  },
+  "files": [
+    "bin",
+    "README.md"
+  ],
+  "keywords": [
+    "env",
+    "dotenv",
+    "cli",
+    "static-analysis",
+    "audit",
+    "rust",
+    "typescript",
+    "javascript",
+    "ci"
+  ],
+  "author": "Jayasurya <jayasurya261>",
+  "license": "MIT OR Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jayasurya261/envdoc.git"
+  },
+  "bugs": {
+    "url": "https://github.com/jayasurya261/envdoc/issues"
+  },
+  "homepage": "https://github.com/jayasurya261/envdoc#readme"
+}
