@@ -268,13 +268,45 @@ impl AstScanner {
                 self.visit_class_elements(&c.body.body);
             }
             Statement::ExportDefaultDeclaration(s) => {
-                if let Some(e) = s.declaration.as_expression() {
-                    if is_env_object(e) {
-                        let span = self.span_of(e.span());
-                        self.emit_escape(span, "Environment object exported directly");
-                    } else {
-                        self.visit_expression(e);
+                match &s.declaration {
+                    ExportDefaultDeclarationKind::FunctionDeclaration(func) => {
+                        if let Some(body) = &func.body {
+                            for inner in &body.statements {
+                                self.visit_statement(inner);
+                            }
+                        }
                     }
+                    ExportDefaultDeclarationKind::ClassDeclaration(c) => {
+                        self.visit_class_elements(&c.body.body);
+                    }
+                    _ => {
+                        if let Some(e) = s.declaration.as_expression() {
+                            if is_env_object(e) {
+                                let span = self.span_of(e.span());
+                                self.emit_escape(span, "Environment object exported directly");
+                            } else {
+                                self.visit_expression(e);
+                            }
+                        }
+                    }
+                }
+            }
+            Statement::ExportDeclaration(s) => {
+                match &s.declaration {
+                    Declaration::VariableDeclaration(decl) => {
+                        self.visit_variable_declaration(decl);
+                    }
+                    Declaration::FunctionDeclaration(func) => {
+                        if let Some(body) = &func.body {
+                            for inner in &body.statements {
+                                self.visit_statement(inner);
+                            }
+                        }
+                    }
+                    Declaration::ClassDeclaration(c) => {
+                        self.visit_class_elements(&c.body.body);
+                    }
+                    _ => {}
                 }
             }
             _ => {}

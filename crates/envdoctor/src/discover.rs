@@ -43,11 +43,11 @@ pub struct DiscoveredFiles {
     pub depth_limit_exceeded: bool,
 }
 
-/// Returns true if the file has a supported JavaScript or TypeScript extension.
+/// Returns true if the file has a supported JavaScript, TypeScript, or Rust extension.
 pub fn is_supported_source_file(path: &Path) -> bool {
     matches!(
         path.extension().and_then(|ext| ext.to_str()),
-        Some("js" | "mjs" | "cjs" | "jsx" | "ts" | "mts" | "cts" | "tsx")
+        Some("js" | "mjs" | "cjs" | "jsx" | "ts" | "mts" | "cts" | "tsx" | "rs")
     )
 }
 
@@ -166,6 +166,8 @@ mod tests {
         assert!(is_supported_source_file(Path::new("view.jsx")));
         assert!(is_supported_source_file(Path::new("api.mts")));
         assert!(is_supported_source_file(Path::new("db.cts")));
+        assert!(is_supported_source_file(Path::new("main.rs")));
+        assert!(is_supported_source_file(Path::new("lib.rs")));
 
         assert!(!is_supported_source_file(Path::new(".env")));
         assert!(!is_supported_source_file(Path::new(".env.example")));

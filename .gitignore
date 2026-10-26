@@ -6,4 +6,5 @@ Thumbs.db
 .idea/
 .vscode/
 *.swp
+/dummy_fullstack_app/
 

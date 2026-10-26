@@ -308,9 +308,11 @@ dependencies = [
  "oxc_ast",
  "oxc_parser",
  "oxc_span",
+ "proc-macro2",
  "proptest",
  "serde",
  "serde_json",
+ "syn 2.0.119",
  "thiserror",
  "trybuild",
 ]
