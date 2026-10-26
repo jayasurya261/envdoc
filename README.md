@@ -1,6 +1,7 @@
 # EnvDoctor (`envdoc`)
 
 [![Crates.io](https://img.shields.io/crates/v/envdoc.svg)](https://crates.io/crates/envdoc)
+[![npm](https://img.shields.io/npm/v/envdoc-cli.svg)](https://www.npmjs.com/package/envdoc-cli)
 [![CI](https://github.com/jayasurya261/envdoc/actions/workflows/ci.yml/badge.svg)](https://github.com/jayasurya261/envdoc/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](LICENSE-MIT)
 
@@ -31,13 +32,19 @@ Modern applications (especially full-stack apps mixing TypeScript and Rust, such
 
 ## Installation
 
-Install the CLI from [crates.io](https://crates.io/crates/envdoc):
-
+### Via Cargo (Rust)
 ```bash
 cargo install envdoc
 ```
 
-This installs the binary as `envdoctor`. Verify installation:
+### Via npm (Node.js / TypeScript)
+```bash
+npm install -D envdoc-cli
+# or run zero-install via npx:
+npx envdoc-cli
+```
+
+This installs the binary command as `envdoctor` (and `envdoc`). Verify installation:
 
 ```bash
 envdoctor --version

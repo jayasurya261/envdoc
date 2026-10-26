@@ -1,5 +1,5 @@
 {
-  "name": "envdoctor-cli",
+  "name": "envdoc-cli",
   "version": "0.1.0",
   "description": "Fast, safe-by-construction AST environment contract auditor keeping .env.example in sync with Rust, TypeScript, and JavaScript source code",
   "bin": {
@@ -32,3 +32,4 @@
   },
   "homepage": "https://github.com/jayasurya261/envdoc#readme"
 }
+

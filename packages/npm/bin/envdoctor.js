@@ -46,3 +46,4 @@ if (result.error) {
 }
 
 process.exit(result.status ?? 0);
+

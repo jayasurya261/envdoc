@@ -1,4 +1,4 @@
-# envdoctor-cli
+# envdoc-cli
 
 > **Fast, safe-by-construction AST auditor keeping `.env.example` in sync with Rust, TypeScript, and JavaScript source code.**
 
@@ -6,27 +6,27 @@
 
 Run without installing:
 ```bash
-npx envdoctor-cli
+npx envdoc-cli
 ```
 
 Or audit with an active `.env` file:
 ```bash
-npx envdoctor-cli --env .env
+npx envdoc-cli --env .env
 ```
 
 Fail on warnings in CI:
 ```bash
-npx envdoctor-cli --fail-on warn
+npx envdoc-cli --fail-on warn
 ```
 
 ## Installation
 
 ```bash
-npm install -D envdoctor-cli
+npm install -D envdoc-cli
 # or
-pnpm add -D envdoctor-cli
+pnpm add -D envdoc-cli
 # or
-yarn add -D envdoctor-cli
+yarn add -D envdoc-cli
 ```
 
 Add to your `package.json` scripts:
@@ -39,3 +39,4 @@ Add to your `package.json` scripts:
 ```
 
 For full documentation and CLI options, visit the [EnvDoctor GitHub Repository](https://github.com/jayasurya261/envdoc).
+
