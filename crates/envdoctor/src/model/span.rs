@@ -127,4 +127,3 @@ mod tests {
         assert_eq!(loc.to_string(), "src/index.ts:42:5");
     }
 }
-

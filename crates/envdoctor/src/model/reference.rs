@@ -62,4 +62,3 @@ mod tests {
         assert_eq!(reference.evidence_kind, EvidenceKind::DirectMember);
     }
 }
-

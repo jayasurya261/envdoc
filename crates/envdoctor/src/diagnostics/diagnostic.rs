@@ -1,6 +1,6 @@
-use crate::dialect::diagnostic::DialectDiagnostic;
 use crate::diagnostics::code::DiagnosticCode;
 use crate::diagnostics::severity::Severity;
+use crate::dialect::diagnostic::DialectDiagnostic;
 use crate::model::evidence::EvidenceKind;
 use crate::model::name::EnvName;
 use crate::model::path::RelPath;

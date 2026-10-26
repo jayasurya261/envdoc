@@ -196,8 +196,7 @@ fn test_rule5_contract_missing_and_empty() {
 
     // Empty contract -> ENV021
     let empty_contract = Contract::new(".env.example", vec![]);
-    let diags_empty =
-        evaluate_contract(Some(&empty_contract), None, &[], &AuditOptions::default());
+    let diags_empty = evaluate_contract(Some(&empty_contract), None, &[], &AuditOptions::default());
     assert_eq!(diags_empty.len(), 1);
     assert_eq!(diags_empty[0].code, DiagnosticCode::ENV021);
     assert_eq!(diags_empty[0].severity, Severity::Warning);

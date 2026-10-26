@@ -159,11 +159,7 @@ pub fn render<W: Write>(report: &Report, writer: &mut W, use_color: bool) -> io:
             writeln!(
                 writer,
                 "   {}-->{} {}:{}:{}",
-                c.dim,
-                c.reset,
-                loc.path,
-                loc.span.line,
-                loc.span.column
+                c.dim, c.reset, loc.path, loc.span.line, loc.span.column
             )?;
         }
 
@@ -184,10 +180,7 @@ pub fn render<W: Write>(report: &Report, writer: &mut W, use_color: bool) -> io:
             writeln!(
                 writer,
                 "   {}={}{} advice: {}",
-                c.dim,
-                c.reset,
-                c.dim,
-                advice
+                c.dim, c.reset, c.dim, advice
             )?;
         }
 
@@ -219,13 +212,25 @@ pub fn render<W: Write>(report: &Report, writer: &mut W, use_color: bool) -> io:
         c.reset,
         report.summary.scanned_files,
         report.summary.skipped_files,
-        if report.summary.total_errors > 0 { c.error } else { c.reset },
+        if report.summary.total_errors > 0 {
+            c.error
+        } else {
+            c.reset
+        },
         report.summary.total_errors,
         c.reset,
-        if report.summary.total_warnings > 0 { c.warning } else { c.reset },
+        if report.summary.total_warnings > 0 {
+            c.warning
+        } else {
+            c.reset
+        },
         report.summary.total_warnings,
         c.reset,
-        if report.summary.total_notes > 0 { c.note } else { c.reset },
+        if report.summary.total_notes > 0 {
+            c.note
+        } else {
+            c.reset
+        },
         report.summary.total_notes,
         c.reset
     )?;

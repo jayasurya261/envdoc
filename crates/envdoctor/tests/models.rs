@@ -156,4 +156,3 @@ fn test_raw_env_value_redaction_lifecycle() {
     let raw_multiline = RawEnvValue::new("line1\nline2\nline3", true);
     assert_eq!(raw_multiline.into_kind(), ValueKind::MultiLine);
 }
-

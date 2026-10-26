@@ -52,7 +52,10 @@ pub fn evaluate_contract(
                 contract.path
             ),
             None,
-            vec![Location::new(contract.path.clone(), crate::model::span::Span::point(1, 1, 0))],
+            vec![Location::new(
+                contract.path.clone(),
+                crate::model::span::Span::point(1, 1, 0),
+            )],
             None,
         ));
     }
@@ -191,4 +194,3 @@ pub fn evaluate_contract(
 
     diagnostics
 }
-

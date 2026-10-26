@@ -21,4 +21,3 @@ mod tests {
         assert!(rendered.contains("\"complete\": true"));
     }
 }
-

@@ -39,4 +39,3 @@ proptest! {
         assert_eq!(output.diagnostics.len(), 0);
     }
 }
-

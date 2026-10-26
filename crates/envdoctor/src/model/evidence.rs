@@ -46,8 +46,14 @@ mod tests {
         assert_eq!(EvidenceKind::DirectMember.as_str(), "direct-member");
         assert_eq!(EvidenceKind::BracketLiteral.as_str(), "bracket-literal");
         assert_eq!(EvidenceKind::Destructured.as_str(), "destructured");
-        assert_eq!(EvidenceKind::DynamicUnresolved.as_str(), "dynamic-unresolved");
-        assert_eq!(EvidenceKind::WholeObjectEscape.as_str(), "whole-object-escape");
+        assert_eq!(
+            EvidenceKind::DynamicUnresolved.as_str(),
+            "dynamic-unresolved"
+        );
+        assert_eq!(
+            EvidenceKind::WholeObjectEscape.as_str(),
+            "whole-object-escape"
+        );
     }
 
     #[test]
@@ -58,4 +64,3 @@ mod tests {
         assert_eq!(deserialized, EvidenceKind::DirectMember);
     }
 }
-

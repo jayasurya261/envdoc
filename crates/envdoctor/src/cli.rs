@@ -104,4 +104,3 @@ pub struct Cli {
     #[arg(long, default_value_t = 30)]
     pub max_depth: usize,
 }
-

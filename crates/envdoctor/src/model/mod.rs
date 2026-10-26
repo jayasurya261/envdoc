@@ -18,4 +18,3 @@ pub use path::RelPath;
 pub use reference::Reference;
 pub use span::{Location, Span};
 pub use value::ValueKind;
-

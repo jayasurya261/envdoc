@@ -8,4 +8,3 @@ pub mod parser;
 
 pub use diagnostic::{DiagnosticCode, DialectDiagnostic, Severity};
 pub use parser::{parse, ParseOutput};
-

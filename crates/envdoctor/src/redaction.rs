@@ -100,4 +100,3 @@ mod tests {
         drop(raw);
     }
 }
-

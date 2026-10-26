@@ -22,9 +22,12 @@ struct TempWorkspace {
 impl TempWorkspace {
     fn new(name: &str) -> Self {
         let counter = TEST_COUNTER.fetch_add(1, Ordering::SeqCst);
-        let dir = std::env::temp_dir()
-            .join("envdoctor_tests")
-            .join(format!("{}_{}_{}", name, std::process::id(), counter));
+        let dir = std::env::temp_dir().join("envdoctor_tests").join(format!(
+            "{}_{}_{}",
+            name,
+            std::process::id(),
+            counter
+        ));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
         Self { dir }
@@ -137,7 +140,10 @@ fn test_engine_missing_contract_env020() {
     };
 
     let report = run_engine(&config);
-    assert!(report.diagnostics.iter().any(|d| d.code == DiagnosticCode::ENV020));
+    assert!(report
+        .diagnostics
+        .iter()
+        .any(|d| d.code == DiagnosticCode::ENV020));
     assert_eq!(report.exit_code(Severity::Warning), 2); // Usage error
 }
 
@@ -155,7 +161,10 @@ fn test_engine_empty_contract_env021() {
     };
 
     let report = run_engine(&config);
-    assert!(report.diagnostics.iter().any(|d| d.code == DiagnosticCode::ENV021));
+    assert!(report
+        .diagnostics
+        .iter()
+        .any(|d| d.code == DiagnosticCode::ENV021));
     assert_eq!(report.exit_code(Severity::Warning), 1);
     assert_eq!(report.exit_code(Severity::Error), 0);
 }
@@ -178,7 +187,10 @@ fn test_engine_oversized_file_io010() {
 
     let report = run_engine(&config);
     assert!(!report.summary.complete);
-    assert!(report.diagnostics.iter().any(|d| d.code == DiagnosticCode::IO010));
+    assert!(report
+        .diagnostics
+        .iter()
+        .any(|d| d.code == DiagnosticCode::IO010));
     assert_eq!(report.summary.skipped_files, 1);
     assert_eq!(report.exit_code(Severity::Warning), 3); // Operational failure
 }
@@ -186,7 +198,10 @@ fn test_engine_oversized_file_io010() {
 #[test]
 fn test_engine_clean_contract_pass() {
     let ws = TempWorkspace::new("clean_pass");
-    let contract = ws.write_file(".env.example", "PORT=3000\nDATABASE_URL=postgres://localhost\n");
+    let contract = ws.write_file(
+        ".env.example",
+        "PORT=3000\nDATABASE_URL=postgres://localhost\n",
+    );
     ws.write_file(
         "src/server.ts",
         "const port = process.env.PORT;\nconst db = process.env.DATABASE_URL;\n",
@@ -233,16 +248,28 @@ fn test_engine_rule_violations_env001_env002_env003_env007() {
     let report = run_engine(&config);
 
     // ENV001: UNDOCUMENTED_KEY used in code but absent from contract
-    assert!(report.diagnostics.iter().any(|d| d.code == DiagnosticCode::ENV001));
+    assert!(report
+        .diagnostics
+        .iter()
+        .any(|d| d.code == DiagnosticCode::ENV001));
 
     // ENV003: REQUIRED_VAR in contract but missing from .env
-    assert!(report.diagnostics.iter().any(|d| d.code == DiagnosticCode::ENV003));
+    assert!(report
+        .diagnostics
+        .iter()
+        .any(|d| d.code == DiagnosticCode::ENV003));
 
     // Contract has REQUIRED_VAR not referenced in source -> ENV002
-    assert!(report.diagnostics.iter().any(|d| d.code == DiagnosticCode::ENV002));
+    assert!(report
+        .diagnostics
+        .iter()
+        .any(|d| d.code == DiagnosticCode::ENV002));
 
     // OPTIONAL_VAR is empty in .env, but it's optional so ENV007 should NOT trigger for it
-    assert!(!report.diagnostics.iter().any(|d| d.code == DiagnosticCode::ENV007));
+    assert!(!report
+        .diagnostics
+        .iter()
+        .any(|d| d.code == DiagnosticCode::ENV007));
 
     assert_eq!(report.exit_code(Severity::Warning), 1);
 }

@@ -66,7 +66,10 @@ impl Report {
         }
 
         // Check if any diagnostic meets or exceeds the fail_on threshold
-        let has_failures = self.diagnostics.iter().any(|d| d.severity.is_at_least(fail_on));
+        let has_failures = self
+            .diagnostics
+            .iter()
+            .any(|d| d.severity.is_at_least(fail_on));
         if has_failures {
             1
         } else {
@@ -120,4 +123,3 @@ mod tests {
         assert_eq!(io_report.exit_code(Severity::Warning), 3);
     }
 }
-

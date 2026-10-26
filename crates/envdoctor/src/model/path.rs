@@ -155,4 +155,3 @@ mod tests {
         assert_eq!(path, deserialized);
     }
 }
-

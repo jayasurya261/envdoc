@@ -134,4 +134,3 @@ mod tests {
         assert!(!EnvName::new("FOO BAR").is_valid_identifier());
     }
 }
-

@@ -23,9 +23,7 @@ pub use diagnostics::{Diagnostic, DiagnosticCode, Report, Severity, Summary};
 pub use dialect::{parse, DialectDiagnostic, ParseOutput};
 pub use discover::{discover_files, DiscoveredFiles, DiscoveryOptions};
 pub use engine::{run_engine, EngineConfig};
-pub use model::{
-    Definition, EnvName, EvidenceKind, Location, Reference, RelPath, Span, ValueKind,
-};
+pub use model::{Definition, EnvName, EvidenceKind, Location, Reference, RelPath, Span, ValueKind};
 pub use redaction::RawEnvValue;
 pub use render::{render_human, render_json};
 pub use rules::{evaluate_contract, AuditOptions, Contract};

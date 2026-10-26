@@ -72,4 +72,3 @@ mod tests {
         assert!(!def.is_optional);
     }
 }
-

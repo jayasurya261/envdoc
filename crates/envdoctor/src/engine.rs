@@ -110,7 +110,10 @@ pub fn run_engine(config: &EngineConfig) -> Report {
                         .into_iter()
                         .map(|d| d.into_diagnostic(contract_rel.clone())),
                 );
-                contract = Some(Contract::new(contract_rel.clone(), parse_output.definitions));
+                contract = Some(Contract::new(
+                    contract_rel.clone(),
+                    parse_output.definitions,
+                ));
             }
             ReadResult::LimitExceeded(len) => {
                 diagnostics.push(Diagnostic::new(
@@ -155,7 +158,10 @@ pub fn run_engine(config: &EngineConfig) -> Report {
                 diagnostics.push(Diagnostic::new(
                     DiagnosticCode::IO002,
                     Severity::Error,
-                    format!("Contract file '{}' contains invalid UTF-8 bytes", contract_rel),
+                    format!(
+                        "Contract file '{}' contains invalid UTF-8 bytes",
+                        contract_rel
+                    ),
                     None,
                     vec![Location::new(contract_rel.clone(), Span::point(1, 1, 0))],
                     None,
@@ -234,7 +240,10 @@ pub fn run_engine(config: &EngineConfig) -> Report {
                     diagnostics.push(Diagnostic::new(
                         DiagnosticCode::IO002,
                         Severity::Error,
-                        format!("Environment file '{}' contains invalid UTF-8 bytes", env_rel),
+                        format!(
+                            "Environment file '{}' contains invalid UTF-8 bytes",
+                            env_rel
+                        ),
                         None,
                         vec![Location::new(env_rel.clone(), Span::point(1, 1, 0))],
                         None,

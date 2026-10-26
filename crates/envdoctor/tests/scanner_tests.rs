@@ -15,19 +15,34 @@ fn test_member_expressions_and_optional_chaining() {
     assert_eq!(result.references.len(), 5);
 
     assert_eq!(result.references[0].name.as_str(), "NODE_ENV");
-    assert_eq!(result.references[0].evidence_kind, EvidenceKind::DirectMember);
+    assert_eq!(
+        result.references[0].evidence_kind,
+        EvidenceKind::DirectMember
+    );
 
     assert_eq!(result.references[1].name.as_str(), "PORT");
-    assert_eq!(result.references[1].evidence_kind, EvidenceKind::DirectMember);
+    assert_eq!(
+        result.references[1].evidence_kind,
+        EvidenceKind::DirectMember
+    );
 
     assert_eq!(result.references[2].name.as_str(), "VITE_API_URL");
-    assert_eq!(result.references[2].evidence_kind, EvidenceKind::DirectMember);
+    assert_eq!(
+        result.references[2].evidence_kind,
+        EvidenceKind::DirectMember
+    );
 
     assert_eq!(result.references[3].name.as_str(), "OPTIONAL_FLAG");
-    assert_eq!(result.references[3].evidence_kind, EvidenceKind::DirectMember);
+    assert_eq!(
+        result.references[3].evidence_kind,
+        EvidenceKind::DirectMember
+    );
 
     assert_eq!(result.references[4].name.as_str(), "OPTIONAL_META");
-    assert_eq!(result.references[4].evidence_kind, EvidenceKind::DirectMember);
+    assert_eq!(
+        result.references[4].evidence_kind,
+        EvidenceKind::DirectMember
+    );
 }
 
 #[test]
@@ -43,13 +58,22 @@ fn test_bracket_access_with_literals() {
     assert_eq!(result.references.len(), 3);
 
     assert_eq!(result.references[0].name.as_str(), "SINGLE_QUOTED");
-    assert_eq!(result.references[0].evidence_kind, EvidenceKind::BracketLiteral);
+    assert_eq!(
+        result.references[0].evidence_kind,
+        EvidenceKind::BracketLiteral
+    );
 
     assert_eq!(result.references[1].name.as_str(), "DOUBLE_QUOTED");
-    assert_eq!(result.references[1].evidence_kind, EvidenceKind::BracketLiteral);
+    assert_eq!(
+        result.references[1].evidence_kind,
+        EvidenceKind::BracketLiteral
+    );
 
     assert_eq!(result.references[2].name.as_str(), "TEMPLATE_LITERAL");
-    assert_eq!(result.references[2].evidence_kind, EvidenceKind::BracketLiteral);
+    assert_eq!(
+        result.references[2].evidence_kind,
+        EvidenceKind::BracketLiteral
+    );
 }
 
 #[test]
