@@ -289,6 +289,10 @@ fn test_canary_in_process_engine_and_panic_boundaries() {
     use envdoctor::engine::{run_engine, EngineConfig};
     use envdoctor::render::{render_human, render_json};
 
+    // Use an unshared, unique canary specific to this in-process memory test
+    // so concurrent test threads do not introduce false positive memory detections.
+    const IN_PROCESS_CANARY: &str = "IN_PROCESS_SECRET_CANARY_9876543210_XYZ";
+
     let ws = TempWorkspace::new("canary_in_process");
     let contract = ws.write_file(
         ".env.example",
@@ -297,7 +301,7 @@ fn test_canary_in_process_engine_and_panic_boundaries() {
     let env_file = {
         let mut b = zeroize::Zeroizing::new(Vec::new());
         b.extend_from_slice(b"DATABASE_URL=postgres://localhost\nSECRET_KEY=");
-        b.extend_from_slice(CANARY.as_bytes());
+        b.extend_from_slice(IN_PROCESS_CANARY.as_bytes());
         b.extend_from_slice(b"\n");
         ws.write_bytes(".env", &b)
     };
@@ -320,7 +324,7 @@ fn test_canary_in_process_engine_and_panic_boundaries() {
     render_human(&report, &mut human_buf, false).unwrap();
     let human_str = String::from_utf8_lossy(&human_buf);
     assert!(
-        !human_str.contains(CANARY),
+        !human_str.contains(IN_PROCESS_CANARY),
         "Canary leaked into human report: {}",
         human_str
     );
@@ -328,7 +332,7 @@ fn test_canary_in_process_engine_and_panic_boundaries() {
     // 2. Scan rendered JSON output
     let json_str = render_json(&report).unwrap();
     assert!(
-        !json_str.contains(CANARY),
+        !json_str.contains(IN_PROCESS_CANARY),
         "Canary leaked into JSON report: {}",
         json_str
     );
@@ -339,7 +343,7 @@ fn test_canary_in_process_engine_and_panic_boundaries() {
     let malformed_env = {
         let mut b = zeroize::Zeroizing::new(Vec::new());
         b.extend_from_slice(b"TEST=");
-        b.extend_from_slice(CANARY.as_bytes());
+        b.extend_from_slice(IN_PROCESS_CANARY.as_bytes());
         b.extend_from_slice(b"\n");
         malformed_ws.write_bytes(".env", &b)
     };
@@ -355,7 +359,7 @@ fn test_canary_in_process_engine_and_panic_boundaries() {
     let malformed_report = run_engine(&malformed_config);
     let malformed_json = render_json(&malformed_report).unwrap();
     assert!(
-        !malformed_json.contains(CANARY),
+        !malformed_json.contains(IN_PROCESS_CANARY),
         "Canary leaked in malformed recovery JSON: {}",
         malformed_json
     );
@@ -366,18 +370,22 @@ fn test_canary_in_process_engine_and_panic_boundaries() {
         use std::io::{Read, Seek, SeekFrom};
         if let Ok(maps) = fs::read_to_string("/proc/self/maps") {
             if let Ok(mut mem_file) = fs::File::open("/proc/self/mem") {
-                let canary_bytes = CANARY.as_bytes();
+                let canary_bytes = IN_PROCESS_CANARY.as_bytes();
                 for line in maps.lines() {
                     let parts: Vec<&str> = line.split_whitespace().collect();
-                    // Scan dynamic writable memory (heap / anonymous mmaps).
-                    // Skip file-backed executable mappings because the binary on disk contains the compiled CANARY string constant in .rodata.
-                    let is_file_backed = parts.len() >= 6 && parts[5].starts_with('/');
-                    let is_writable_dynamic = parts.len() >= 2
+                    // Specifically scan dynamic heap allocations (e.g. `[heap]` or anonymous heap mmaps).
+                    // Skip file-backed executable mappings (the compiled test binary contains string constants in .rodata).
+                    // Skip stack mappings (the current test function stack frame holds `canary_bytes` as a local search pattern).
+                    let pathname = if parts.len() >= 6 { parts[5] } else { "" };
+                    let is_file_backed = pathname.starts_with('/');
+                    let is_stack = pathname.starts_with("[stack");
+                    let is_dynamic_heap = parts.len() >= 2
                         && parts[1].starts_with('r')
                         && parts[1].contains('w')
-                        && !is_file_backed;
+                        && !is_file_backed
+                        && !is_stack;
 
-                    if is_writable_dynamic {
+                    if is_dynamic_heap {
                         let range: Vec<&str> = parts[0].split('-').collect();
                         if range.len() == 2 {
                             if let (Ok(start), Ok(end)) = (
