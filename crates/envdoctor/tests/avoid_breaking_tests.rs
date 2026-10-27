@@ -138,4 +138,3 @@ fn test_rollback_runtime_flag_disables_language() {
     assert_eq!(report.summary.total_errors, 0);
     assert_eq!(report.summary.scanned_files, 1);
 }
-
