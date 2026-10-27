@@ -3,7 +3,7 @@
 //! Validates that high-entropy secret canary strings never leak into stdout, stderr,
 //! log output, formatted human text, or serialized JSON reports under any circumstance.
 
-#![allow(clippy::disallowed_methods)]
+#![allow(clippy::disallowed_methods, clippy::collapsible_if)]
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -359,16 +359,17 @@ fn test_canary_in_process_engine_and_panic_boundaries() {
                                 usize::from_str_radix(range[1], 16),
                             ) {
                                 let len = end.saturating_sub(start);
-                                if len > 0 && len <= 10 * 1024 * 1024 {
-                                    if mem_file.seek(SeekFrom::Start(start as u64)).is_ok() {
-                                        let mut buf = vec![0u8; len];
-                                        if mem_file.read_exact(&mut buf).is_ok() {
-                                            assert!(
-                                                !buf.windows(canary_bytes.len())
-                                                    .any(|w| w == canary_bytes),
-                                                "Canary detected in /proc/self/mem heap snapshot!"
-                                            );
-                                        }
+                                if len > 0
+                                    && len <= 10 * 1024 * 1024
+                                    && mem_file.seek(SeekFrom::Start(start as u64)).is_ok()
+                                {
+                                    let mut buf = vec![0u8; len];
+                                    if mem_file.read_exact(&mut buf).is_ok() {
+                                        assert!(
+                                            !buf.windows(canary_bytes.len())
+                                                .any(|w| w == canary_bytes),
+                                            "Canary detected in /proc/self/mem heap snapshot!"
+                                        );
                                     }
                                 }
                             }
