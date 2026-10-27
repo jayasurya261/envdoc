@@ -53,6 +53,15 @@ pub enum DiagnosticCode {
     /// Scan terminated early because size, file count, or depth limit was exceeded.
     #[serde(rename = "IO010")]
     IO010,
+    /// Active environment value does not match contract type annotation (# @type).
+    #[serde(rename = "ENV030")]
+    ENV030,
+    /// Active environment value does not match contract enum annotation (# @enum).
+    #[serde(rename = "ENV031")]
+    ENV031,
+    /// Variable marked @secret or named like a secret exposed with client prefix or marked @public.
+    #[serde(rename = "ENV032")]
+    ENV032,
 }
 
 impl DiagnosticCode {
@@ -71,6 +80,9 @@ impl DiagnosticCode {
             Self::ENV012 => "ENV012",
             Self::ENV020 => "ENV020",
             Self::ENV021 => "ENV021",
+            Self::ENV030 => "ENV030",
+            Self::ENV031 => "ENV031",
+            Self::ENV032 => "ENV032",
             Self::IO001 => "IO001",
             Self::IO002 => "IO002",
             Self::IO003 => "IO003",
@@ -93,6 +105,9 @@ impl DiagnosticCode {
             Self::ENV012 => "environment-escapes",
             Self::ENV020 => "contract-missing",
             Self::ENV021 => "contract-empty",
+            Self::ENV030 => "type-mismatch",
+            Self::ENV031 => "enum-mismatch",
+            Self::ENV032 => "secret-leak-risk",
             Self::IO001 => "unreadable-file",
             Self::IO002 => "invalid-utf8",
             Self::IO003 => "not-a-file",
@@ -115,6 +130,9 @@ impl DiagnosticCode {
             Self::ENV012 => Severity::Note,
             Self::ENV020 => Severity::Error,
             Self::ENV021 => Severity::Warning,
+            Self::ENV030 => Severity::Error,
+            Self::ENV031 => Severity::Error,
+            Self::ENV032 => Severity::Warning,
             Self::IO001 => Severity::Error,
             Self::IO002 => Severity::Error,
             Self::IO003 => Severity::Error,

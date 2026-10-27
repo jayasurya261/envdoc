@@ -7,4 +7,4 @@ pub mod diagnostic;
 pub mod parser;
 
 pub use diagnostic::{DiagnosticCode, DialectDiagnostic, Severity};
-pub use parser::{parse, ParseOutput};
+pub use parser::{parse, parse_with_options, DialectOptions, DuplicateKeyStrategy, ParseOutput};

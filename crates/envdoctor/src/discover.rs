@@ -18,6 +18,8 @@ pub struct DiscoveryOptions {
     pub max_files: usize,
     /// Maximum directory recursion depth.
     pub max_depth: usize,
+    /// Configured languages to scan ('default' for js/ts/rust, 'all', or specific: 'js', 'python', etc.).
+    pub languages: Vec<String>,
 }
 
 impl Default for DiscoveryOptions {
@@ -28,6 +30,7 @@ impl Default for DiscoveryOptions {
             follow_symlinks: false,
             max_files: 10_000,
             max_depth: 30,
+            languages: vec!["all".to_string()],
         }
     }
 }
@@ -43,12 +46,116 @@ pub struct DiscoveredFiles {
     pub depth_limit_exceeded: bool,
 }
 
-/// Returns true if the file has a supported JavaScript, TypeScript, or Rust extension.
+/// Returns true if the file has a supported programming language, script, container, or infra extension,
+/// filtered by the configured list of enabled languages.
+pub fn is_supported_source_file_for_languages(path: &Path, languages: &[String]) -> bool {
+    let all = languages.iter().any(|l| l.eq_ignore_ascii_case("all"));
+    let default =
+        languages.is_empty() || languages.iter().any(|l| l.eq_ignore_ascii_case("default"));
+
+    let allow_js_ts = all
+        || default
+        || languages.iter().any(|l| {
+            let s = l.to_ascii_lowercase();
+            s == "js" || s == "ts" || s == "javascript" || s == "typescript"
+        });
+
+    let allow_rust = all
+        || default
+        || languages.iter().any(|l| {
+            let s = l.to_ascii_lowercase();
+            s == "rust" || s == "rs"
+        });
+
+    let allow_python = all
+        || languages.iter().any(|l| {
+            let s = l.to_ascii_lowercase();
+            s == "python" || s == "py"
+        });
+
+    let allow_go = all
+        || languages.iter().any(|l| {
+            let s = l.to_ascii_lowercase();
+            s == "go"
+        });
+
+    let allow_infra = all
+        || languages.iter().any(|l| {
+            let s = l.to_ascii_lowercase();
+            s == "infra"
+                || s == "docker"
+                || s == "shell"
+                || s == "sh"
+                || s == "compose"
+                || s == "k8s"
+                || s == "terraform"
+        });
+
+    let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+    let lower_name = file_name.to_ascii_lowercase();
+
+    if allow_infra {
+        if lower_name == "dockerfile"
+            || lower_name.starts_with("dockerfile.")
+            || lower_name.ends_with(".dockerfile")
+        {
+            return true;
+        }
+
+        if lower_name == "docker-compose.yml"
+            || lower_name == "docker-compose.yaml"
+            || lower_name == "compose.yml"
+            || lower_name == "compose.yaml"
+        {
+            return true;
+        }
+    }
+
+    let ext = path.extension().and_then(|ext| ext.to_str()).unwrap_or("");
+
+    if allow_js_ts
+        && matches!(
+            ext,
+            "js" | "mjs"
+                | "cjs"
+                | "jsx"
+                | "ts"
+                | "mts"
+                | "cts"
+                | "tsx"
+                | "vue"
+                | "svelte"
+                | "astro"
+        )
+    {
+        return true;
+    }
+
+    if allow_rust && ext == "rs" {
+        return true;
+    }
+
+    if allow_python && matches!(ext, "py" | "pyi" | "pyw") {
+        return true;
+    }
+
+    if allow_go && ext == "go" {
+        return true;
+    }
+
+    if allow_infra
+        && (matches!(ext, "sh" | "bash" | "zsh" | "tf" | "tfvars")
+            || (matches!(ext, "yml" | "yaml") && path.to_string_lossy().contains(".github")))
+    {
+        return true;
+    }
+
+    false
+}
+
+/// Returns true if the file has a supported programming language, script, container, or infra extension.
 pub fn is_supported_source_file(path: &Path) -> bool {
-    matches!(
-        path.extension().and_then(|ext| ext.to_str()),
-        Some("js" | "mjs" | "cjs" | "jsx" | "ts" | "mts" | "cts" | "tsx" | "rs")
-    )
+    is_supported_source_file_for_languages(path, &["all".to_string()])
 }
 
 /// Returns true if the directory is a standard vendor/build artifact directory.
@@ -121,7 +228,7 @@ pub fn discover_files(options: &DiscoveryOptions) -> DiscoveredFiles {
 
                     if entry.file_type().is_some_and(|ft| ft.is_file()) {
                         let path = entry.into_path();
-                        if is_supported_source_file(&path) {
+                        if is_supported_source_file_for_languages(&path, &options.languages) {
                             if files.len() >= options.max_files {
                                 file_count_limit_exceeded = true;
                                 break;

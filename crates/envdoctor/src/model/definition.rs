@@ -1,3 +1,4 @@
+use crate::model::contract::ContractAnnotations;
 use crate::model::name::EnvName;
 use crate::model::path::RelPath;
 use crate::model::span::{Location, Span};
@@ -19,6 +20,9 @@ pub struct Definition {
     pub value_kind: ValueKind,
     /// Whether the definition was marked as optional (e.g. via `# @optional`).
     pub is_optional: bool,
+    /// Contract metadata annotations (types, enum, secret, public, since).
+    #[serde(default)]
+    pub annotations: ContractAnnotations,
 }
 
 impl Definition {
@@ -30,11 +34,33 @@ impl Definition {
         value_kind: ValueKind,
         is_optional: bool,
     ) -> Self {
+        let annotations = ContractAnnotations {
+            is_optional,
+            ..Default::default()
+        };
         Self {
             name: name.into(),
             location: Location::new(path.into(), span),
             value_kind,
             is_optional,
+            annotations,
+        }
+    }
+
+    /// Constructs a `Definition` with full annotations.
+    pub fn with_annotations(
+        name: impl Into<EnvName>,
+        path: impl Into<RelPath>,
+        span: Span,
+        value_kind: ValueKind,
+        annotations: ContractAnnotations,
+    ) -> Self {
+        Self {
+            name: name.into(),
+            location: Location::new(path.into(), span),
+            value_kind,
+            is_optional: annotations.is_optional,
+            annotations,
         }
     }
 

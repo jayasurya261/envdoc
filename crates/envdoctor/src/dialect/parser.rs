@@ -1,27 +1,54 @@
-use crate::dialect::diagnostic::{DiagnosticCode, DialectDiagnostic};
+use crate::dialect::diagnostic::{DiagnosticCode, DialectDiagnostic, Severity};
+use crate::model::contract::ContractAnnotations;
 use crate::model::definition::Definition;
 use crate::model::name::EnvName;
 use crate::model::path::RelPath;
 use crate::model::span::Span;
 use crate::model::value::ValueKind;
 use crate::redaction::RawEnvValue;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+
+/// Duplicate key resolution strategy in `.env` files.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum DuplicateKeyStrategy {
+    /// The last definition overwrites earlier definitions (default dotenvy/Node dotenv behavior).
+    #[default]
+    LastWins,
+    /// The first definition is retained; subsequent duplicates are ignored.
+    FirstWins,
+    /// Duplicate keys are treated as fatal errors.
+    Error,
+}
+
+/// Options configuring dialect parsing.
+#[derive(Debug, Clone, Default)]
+pub struct DialectOptions {
+    /// Strategy for handling duplicate variable definitions.
+    pub duplicate_strategy: DuplicateKeyStrategy,
+}
 
 /// The structured output produced by parsing a `.env` or `.env.example` file.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ParseOutput {
     /// Discovered environment variable definitions.
     pub definitions: Vec<Definition>,
-    /// Diagnostics (syntax errors, warnings, unsupported constructs, duplicates) emitted during parsing.
+    /// Diagnostics emitted during parsing.
     pub diagnostics: Vec<DialectDiagnostic>,
 }
 
-/// Parses `.env` or contract file content from in-memory UTF-8 text into definitions and diagnostics.
-///
-/// Invariant: Pure in-memory execution with zero file I/O.
+/// Parses `.env` or contract file content with default options.
 pub fn parse(input: &str, path: impl Into<RelPath>) -> ParseOutput {
+    parse_with_options(input, path, &DialectOptions::default())
+}
+
+/// Parses `.env` or contract file content with configurable options.
+pub fn parse_with_options(
+    input: &str,
+    path: impl Into<RelPath>,
+    options: &DialectOptions,
+) -> ParseOutput {
     let rel_path = path.into();
-    let mut parser = Parser::new(input, rel_path);
+    let mut parser = Parser::new(input, rel_path, options.clone());
     parser.parse_all()
 }
 
@@ -31,24 +58,28 @@ struct Parser<'a> {
     line: u32,
     col: u32,
     path: RelPath,
+    options: DialectOptions,
     definitions: Vec<Definition>,
     diagnostics: Vec<DialectDiagnostic>,
     seen_keys: HashMap<String, usize>,
-    is_optional_pending: bool,
+    var_dependencies: HashMap<String, Vec<String>>,
+    pending_annotations: ContractAnnotations,
 }
 
 impl<'a> Parser<'a> {
-    fn new(source: &'a str, path: RelPath) -> Self {
+    fn new(source: &'a str, path: RelPath, options: DialectOptions) -> Self {
         Self {
             bytes: source.as_bytes(),
             pos: 0,
             line: 1,
             col: 1,
             path,
+            options,
             definitions: Vec::new(),
             diagnostics: Vec::new(),
             seen_keys: HashMap::new(),
-            is_optional_pending: false,
+            var_dependencies: HashMap::new(),
+            pending_annotations: ContractAnnotations::default(),
         }
     }
 
@@ -77,13 +108,21 @@ impl<'a> Parser<'a> {
         if self.pos < self.bytes.len() {
             let b = self.bytes[self.pos];
             self.pos += 1;
-            if b == b'\n' {
+            if b == b'\r' {
+                if self.pos < self.bytes.len() && self.bytes[self.pos] == b'\n' {
+                    self.pos += 1;
+                }
                 self.line += 1;
                 self.col = 1;
+                Some(b'\n')
+            } else if b == b'\n' {
+                self.line += 1;
+                self.col = 1;
+                Some(b)
             } else {
                 self.col += 1;
+                Some(b)
             }
-            Some(b)
         } else {
             None
         }
@@ -91,7 +130,7 @@ impl<'a> Parser<'a> {
 
     fn skip_whitespace_inline(&mut self) {
         while let Some(b) = self.peek() {
-            if b == b' ' || b == b'\t' || b == b'\r' {
+            if b == b' ' || b == b'\t' {
                 self.advance();
             } else {
                 break;
@@ -101,7 +140,7 @@ impl<'a> Parser<'a> {
 
     fn skip_to_eol(&mut self) {
         while let Some(b) = self.peek() {
-            if b == b'\n' {
+            if b == b'\n' || b == b'\r' {
                 self.advance();
                 break;
             }
@@ -110,15 +149,19 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_all(&mut self) -> ParseOutput {
+        // Strip UTF-8 BOM if present at the start of file
+        if self.bytes.starts_with(b"\xEF\xBB\xBF") {
+            self.pos = 3;
+        }
+
         while !self.is_eof() {
             self.skip_whitespace_inline();
 
             match self.peek() {
                 None => break,
-                Some(b'\n') => {
+                Some(b'\n') | Some(b'\r') => {
                     self.advance();
-                    // An empty line resets pending doc annotations
-                    self.is_optional_pending = false;
+                    self.pending_annotations = ContractAnnotations::default();
                 }
                 Some(b'#') => {
                     self.parse_comment_line();
@@ -128,6 +171,9 @@ impl<'a> Parser<'a> {
                 }
             }
         }
+
+        // Structural cycle detection across variable expansion reference graph
+        self.detect_variable_expansion_cycles();
 
         ParseOutput {
             definitions: std::mem::take(&mut self.definitions),
@@ -139,7 +185,7 @@ impl<'a> Parser<'a> {
         let mut comment_content = String::new();
 
         while let Some(b) = self.peek() {
-            if b == b'\n' {
+            if b == b'\n' || b == b'\r' {
                 self.advance();
                 break;
             }
@@ -147,23 +193,33 @@ impl<'a> Parser<'a> {
             self.advance();
         }
 
-        let trimmed = comment_content.trim();
-        // Check for `# @optional` doc-comment annotation
-        if trimmed == "# @optional"
-            || trimmed.starts_with("# @optional ")
-            || trimmed.starts_with("# @optional:")
-            || trimmed == "#@optional"
-            || trimmed.starts_with("#@optional ")
-            || trimmed.starts_with("#@optional:")
-        {
-            self.is_optional_pending = true;
-        }
+        self.pending_annotations
+            .parse_comment_directive(&comment_content);
     }
 
     fn parse_assignment_line(&mut self) {
         let line_start_pos = self.pos;
         let line_start_line = self.line;
         let line_start_col = self.col;
+
+        // Check for empty key: line starts with '='
+        if self.peek() == Some(b'=') {
+            let span = Span::new(
+                line_start_line,
+                line_start_col,
+                line_start_pos as u32,
+                (self.pos + 1) as u32,
+            );
+            self.diagnostics.push(DialectDiagnostic::new(
+                DiagnosticCode::ENV005,
+                "Malformed line: missing variable name before '='",
+                span,
+                None,
+            ));
+            self.skip_to_eol();
+            self.pending_annotations = ContractAnnotations::default();
+            return;
+        }
 
         // Check for optional `export ` keyword
         if self.starts_with_keyword(b"export") {
@@ -187,7 +243,6 @@ impl<'a> Parser<'a> {
         let key_str = match key_opt {
             Some(k) => k,
             None => {
-                // Malformed line
                 let span = Span::new(
                     line_start_line,
                     line_start_col,
@@ -201,7 +256,7 @@ impl<'a> Parser<'a> {
                     None,
                 ));
                 self.skip_to_eol();
-                self.is_optional_pending = false;
+                self.pending_annotations = ContractAnnotations::default();
                 return;
             }
         };
@@ -216,12 +271,12 @@ impl<'a> Parser<'a> {
             );
             self.diagnostics.push(DialectDiagnostic::new(
                 DiagnosticCode::ENV005,
-                "Malformed line: invalid environment variable name (must match [A-Za-z_][A-Za-z0-9_]*)",
+                "Malformed line: invalid environment variable name",
                 span,
                 None,
             ));
             self.skip_to_eol();
-            self.is_optional_pending = false;
+            self.pending_annotations = ContractAnnotations::default();
             return;
         }
 
@@ -242,7 +297,7 @@ impl<'a> Parser<'a> {
                 None,
             ));
             self.skip_to_eol();
-            self.is_optional_pending = false;
+            self.pending_annotations = ContractAnnotations::default();
             return;
         }
 
@@ -252,10 +307,10 @@ impl<'a> Parser<'a> {
 
         // Parse value
         let value_res = self.parse_value(&env_name);
-        let (value_kind, has_unsupported) = match value_res {
+        let (value_kind, has_unsupported, var_deps) = match value_res {
             Some(v) => v,
             None => {
-                self.is_optional_pending = false;
+                self.pending_annotations = ContractAnnotations::default();
                 return;
             }
         };
@@ -272,7 +327,7 @@ impl<'a> Parser<'a> {
             self.diagnostics.push(DialectDiagnostic::new(
                 DiagnosticCode::ENV006,
                 format!(
-                    "Variable '{}' contains unsupported shell syntax (variable expansion or command substitution)",
+                    "Variable '{}' contains unsupported shell syntax (command substitution or subshell)",
                     key_str
                 ),
                 total_span,
@@ -280,30 +335,65 @@ impl<'a> Parser<'a> {
             ));
         }
 
-        let is_optional = self.is_optional_pending;
-        self.is_optional_pending = false;
+        if !var_deps.is_empty() {
+            self.var_dependencies
+                .entry(key_str.clone())
+                .or_default()
+                .extend(var_deps);
+        }
 
-        let def = Definition::new(
+        let annotations = std::mem::take(&mut self.pending_annotations);
+
+        let def = Definition::with_annotations(
             env_name.clone(),
             self.path.clone(),
             total_span,
             value_kind,
-            is_optional,
+            annotations,
         );
 
-        // Track duplicate keys
+        // Track duplicate keys based on configured strategy
         if let Some(&existing_idx) = self.seen_keys.get(key_str.as_str()) {
-            self.diagnostics.push(DialectDiagnostic::new(
-                DiagnosticCode::ENV004,
-                format!(
-                    "Duplicate variable '{}' defined; last definition wins",
-                    key_str
-                ),
-                total_span,
-                Some(env_name),
-            ));
-            // Last definition wins: update the recorded definition in place
-            self.definitions[existing_idx] = def;
+            match self.options.duplicate_strategy {
+                DuplicateKeyStrategy::LastWins => {
+                    self.diagnostics.push(DialectDiagnostic::new(
+                        DiagnosticCode::ENV004,
+                        format!(
+                            "Duplicate variable '{}' defined; last definition wins",
+                            key_str
+                        ),
+                        total_span,
+                        Some(env_name),
+                    ));
+                    self.definitions[existing_idx] = def;
+                }
+                DuplicateKeyStrategy::FirstWins => {
+                    self.diagnostics.push(DialectDiagnostic::new(
+                        DiagnosticCode::ENV004,
+                        format!(
+                            "Duplicate variable '{}' defined; first definition retained",
+                            key_str
+                        ),
+                        total_span,
+                        Some(env_name),
+                    ));
+                }
+                DuplicateKeyStrategy::Error => {
+                    self.diagnostics.push(
+                        DialectDiagnostic::new(
+                            DiagnosticCode::ENV004,
+                            format!(
+                                "Duplicate variable '{}' defined (prohibited by duplicate strategy)",
+                                key_str
+                            ),
+                            total_span,
+                            Some(env_name),
+                        )
+                        .with_severity(Severity::Error),
+                    );
+                    self.definitions[existing_idx] = def;
+                }
+            }
         } else {
             self.seen_keys.insert(key_str, self.definitions.len());
             self.definitions.push(def);
@@ -322,7 +412,6 @@ impl<'a> Parser<'a> {
             return None;
         }
 
-        // Check for quoted key
         if self.peek() == Some(b'"') || self.peek() == Some(b'\'') {
             let quote = self.advance().unwrap();
             let mut key = String::new();
@@ -330,8 +419,8 @@ impl<'a> Parser<'a> {
                 if b == quote {
                     self.advance();
                     return Some(key);
-                } else if b == b'\n' {
-                    return None; // Unclosed quote before newline
+                } else if b == b'\n' || b == b'\r' {
+                    return None;
                 } else {
                     key.push(b as char);
                     self.advance();
@@ -358,13 +447,13 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_value(&mut self, env_name: &EnvName) -> Option<(ValueKind, bool)> {
+    fn parse_value(&mut self, env_name: &EnvName) -> Option<(ValueKind, bool, Vec<String>)> {
         match self.peek() {
-            None | Some(b'\n') => {
-                if self.peek() == Some(b'\n') {
+            None | Some(b'\n') | Some(b'\r') => {
+                if self.peek() == Some(b'\n') || self.peek() == Some(b'\r') {
                     self.advance();
                 }
-                Some((ValueKind::Empty, false))
+                Some((ValueKind::Empty, false, Vec::new()))
             }
             Some(b'"') => self.parse_double_quoted_value(env_name),
             Some(b'\'') => self.parse_single_quoted_value(env_name),
@@ -372,7 +461,10 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_double_quoted_value(&mut self, env_name: &EnvName) -> Option<(ValueKind, bool)> {
+    fn parse_double_quoted_value(
+        &mut self,
+        env_name: &EnvName,
+    ) -> Option<(ValueKind, bool, Vec<String>)> {
         let quote_start_line = self.line;
         let quote_start_col = self.col;
         let quote_start_pos = self.pos;
@@ -392,6 +484,11 @@ impl<'a> Parser<'a> {
                 self.advance(); // consume \
                 if let Some(next) = self.peek() {
                     match next {
+                        // Line continuation: \ followed by newline
+                        b'\n' | b'\r' => {
+                            self.advance();
+                            is_multiline = true;
+                        }
                         b'n' => {
                             raw_val.push('\n');
                             self.advance();
@@ -426,14 +523,14 @@ impl<'a> Parser<'a> {
                     raw_val.push('\\');
                 }
             } else if b == b'$' {
-                // Check for unsupported expansion
-                if self.is_unsupported_expansion() {
+                // Command substitution like $(cmd) or `cmd` is unsupported
+                if self.is_command_substitution() {
                     has_unsupported = true;
                 }
                 raw_val.push(b as char);
                 self.advance();
             } else {
-                if b == b'\n' {
+                if b == b'\n' || b == b'\r' {
                     is_multiline = true;
                 }
                 raw_val.push(b as char);
@@ -457,16 +554,19 @@ impl<'a> Parser<'a> {
             return None;
         }
 
-        // Consume any inline comment or trailing spaces after closing quote
         if !self.skip_trailing_comment_after_quote(env_name) {
             return None;
         }
 
+        let var_deps = self.extract_expansions(&raw_val, env_name);
         let raw = RawEnvValue::new(raw_val, is_multiline);
-        Some((raw.into_kind(), has_unsupported))
+        Some((raw.into_kind(), has_unsupported, var_deps))
     }
 
-    fn parse_single_quoted_value(&mut self, env_name: &EnvName) -> Option<(ValueKind, bool)> {
+    fn parse_single_quoted_value(
+        &mut self,
+        env_name: &EnvName,
+    ) -> Option<(ValueKind, bool, Vec<String>)> {
         let quote_start_line = self.line;
         let quote_start_col = self.col;
         let quote_start_pos = self.pos;
@@ -482,7 +582,7 @@ impl<'a> Parser<'a> {
                 closed = true;
                 break;
             } else {
-                if b == b'\n' {
+                if b == b'\n' || b == b'\r' {
                     is_multiline = true;
                 }
                 raw_val.push(b as char);
@@ -506,61 +606,61 @@ impl<'a> Parser<'a> {
             return None;
         }
 
-        // Consume any inline comment or trailing spaces after closing quote
         if !self.skip_trailing_comment_after_quote(env_name) {
             return None;
         }
 
-        // Single quoted values are always literal: no expansions occur
+        // Single-quoted values are verbatim: no expansions or escapes
         let raw = RawEnvValue::new(raw_val, is_multiline);
-        Some((raw.into_kind(), false))
+        Some((raw.into_kind(), false, Vec::new()))
     }
 
-    fn parse_unquoted_value(&mut self, _env_name: &EnvName) -> (ValueKind, bool) {
+    fn parse_unquoted_value(&mut self, env_name: &EnvName) -> (ValueKind, bool, Vec<String>) {
         let mut raw_val = String::new();
         let mut has_unsupported = false;
 
         while let Some(b) = self.peek() {
-            if b == b'\n' {
+            if b == b'\\' {
+                // Line continuation: \ followed immediately by newline
+                if self.peek_at(1) == Some(b'\n') || self.peek_at(1) == Some(b'\r') {
+                    self.advance(); // consume \
+                    self.advance(); // consume newline
+                    continue;
+                }
+                raw_val.push(b as char);
+                self.advance();
+            } else if b == b'\n' || b == b'\r' {
                 self.advance();
                 break;
             } else if b == b'#' {
-                // An inline comment occurs if '#' is preceded by whitespace or is at start of value
+                // Inline comments only if preceded by whitespace or at beginning
                 if raw_val.is_empty() || raw_val.ends_with(' ') || raw_val.ends_with('\t') {
-                    // Rest of line is inline comment
                     self.skip_to_eol();
                     break;
                 } else {
-                    raw_val.push('#');
+                    raw_val.push(b as char);
                     self.advance();
                 }
-            } else if b == b'$' {
-                if self.is_unsupported_expansion() {
+            } else {
+                if b == b'$' && self.is_command_substitution() {
                     has_unsupported = true;
                 }
-                raw_val.push('$');
-                self.advance();
-            } else if b == b'`' {
-                // Command substitution with backticks
-                has_unsupported = true;
-                raw_val.push('`');
-                self.advance();
-            } else {
                 raw_val.push(b as char);
                 self.advance();
             }
         }
 
-        let trimmed = raw_val.trim_end_matches([' ', '\t', '\r']);
+        let trimmed = raw_val.trim_end();
+        let var_deps = self.extract_expansions(trimmed, env_name);
         let raw = RawEnvValue::new(trimmed, false);
-        (raw.into_kind(), has_unsupported)
+        (raw.into_kind(), has_unsupported, var_deps)
     }
 
     fn skip_trailing_comment_after_quote(&mut self, env_name: &EnvName) -> bool {
         self.skip_whitespace_inline();
         match self.peek() {
             None => true,
-            Some(b'\n') => {
+            Some(b'\n') | Some(b'\r') => {
                 self.advance();
                 true
             }
@@ -588,12 +688,93 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn is_unsupported_expansion(&self) -> bool {
-        // Look ahead for $VAR, ${VAR}, $(cmd)
+    fn is_command_substitution(&self) -> bool {
+        // Look ahead for $(cmd)
         if let Some(next) = self.peek_at(1) {
-            matches!(next, b'(' | b'{' | b'a'..=b'z' | b'A'..=b'Z' | b'_')
+            next == b'('
         } else {
             false
         }
+    }
+
+    fn extract_expansions(&mut self, s: &str, env_name: &EnvName) -> Vec<String> {
+        let mut deps = Vec::new();
+        let mut remainder = s;
+
+        while let Some(start) = remainder.find("${") {
+            let after_start = &remainder[start + 2..];
+            if let Some(end) = after_start.find('}') {
+                let inner = &after_start[..end];
+                if let Some(dash_idx) = inner.find(":-") {
+                    let var = inner[..dash_idx].trim();
+                    deps.push(var.to_string());
+                } else if let Some(q_idx) = inner.find(":?") {
+                    let var = inner[..q_idx].trim();
+                    let err_msg = &inner[q_idx + 2..];
+                    deps.push(var.to_string());
+                    // Check if variable is defined in seen keys
+                    if !self.seen_keys.contains_key(var) {
+                        self.diagnostics.push(DialectDiagnostic::new(
+                            DiagnosticCode::ENV006,
+                            format!(
+                                "Variable expansion error for '{}': required variable '{}' is missing ({})",
+                                env_name, var, err_msg
+                            ),
+                            Span::point(self.line, self.col, self.pos as u32),
+                            Some(env_name.clone()),
+                        ));
+                    }
+                } else {
+                    let var = inner.trim();
+                    deps.push(var.to_string());
+                }
+                remainder = &after_start[end + 1..];
+            } else {
+                break;
+            }
+        }
+
+        deps
+    }
+
+    fn detect_variable_expansion_cycles(&mut self) {
+        let deps = self.var_dependencies.clone();
+        let mut visited = HashSet::new();
+        let mut rec_stack = Vec::new();
+
+        for key in deps.keys() {
+            if !visited.contains(key) {
+                self.dfs_cycle(key, &deps, &mut visited, &mut rec_stack);
+            }
+        }
+    }
+
+    fn dfs_cycle(
+        &mut self,
+        current: &str,
+        deps: &HashMap<String, Vec<String>>,
+        visited: &mut HashSet<String>,
+        rec_stack: &mut Vec<String>,
+    ) {
+        visited.insert(current.to_string());
+        rec_stack.push(current.to_string());
+
+        if let Some(neighbors) = deps.get(current) {
+            for next in neighbors {
+                if let Some(pos) = rec_stack.iter().position(|k| k == next) {
+                    let cycle_path = rec_stack[pos..].join(" -> ") + " -> " + next;
+                    self.diagnostics.push(DialectDiagnostic::new(
+                        DiagnosticCode::ENV006,
+                        format!("Cyclic variable expansion detected: {}", cycle_path),
+                        Span::point(1, 1, 0),
+                        Some(EnvName::new(current)),
+                    ));
+                } else if !visited.contains(next) {
+                    self.dfs_cycle(next, deps, visited, rec_stack);
+                }
+            }
+        }
+
+        rec_stack.pop();
     }
 }

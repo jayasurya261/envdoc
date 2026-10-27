@@ -274,3 +274,108 @@ fn test_canary_panic_and_debug_representation_safety() {
     let def_json = serde_json::to_string(&def).unwrap();
     assert!(!def_json.contains(CANARY));
 }
+
+#[test]
+fn test_canary_in_process_engine_and_panic_boundaries() {
+    use envdoctor::engine::{run_engine, EngineConfig};
+    use envdoctor::render::{render_human, render_json};
+
+    let ws = TempWorkspace::new("canary_in_process");
+    let contract = ws.write_file(
+        ".env.example",
+        "DATABASE_URL=postgres://localhost\nSECRET_KEY=placeholder\n",
+    );
+    let env_file = ws.write_file(
+        ".env",
+        &format!("DATABASE_URL=postgres://localhost\nSECRET_KEY={}\n", CANARY),
+    );
+    ws.write_file(
+        "src/app.ts",
+        "const db = process.env.DATABASE_URL;\nconst k = process.env.SECRET_KEY;\n",
+    );
+
+    let config = EngineConfig {
+        contract_path: contract,
+        env_path: Some(env_file),
+        scan_paths: vec![ws.path().to_path_buf()],
+        ..EngineConfig::default()
+    };
+
+    let report = run_engine(&config);
+
+    // 1. Scan rendered Human output
+    let mut human_buf = Vec::new();
+    render_human(&report, &mut human_buf, false).unwrap();
+    let human_str = String::from_utf8_lossy(&human_buf);
+    assert!(
+        !human_str.contains(CANARY),
+        "Canary leaked into human report: {}",
+        human_str
+    );
+
+    // 2. Scan rendered JSON output
+    let json_str = render_json(&report).unwrap();
+    assert!(
+        !json_str.contains(CANARY),
+        "Canary leaked into JSON report: {}",
+        json_str
+    );
+
+    // 3. Scan panic messages caught by scanner unwind boundaries
+    let malformed_ws = TempWorkspace::new("canary_malformed_unwind");
+    let malformed_contract = malformed_ws.write_file(".env.example", "TEST=foo\n");
+    let malformed_env = malformed_ws.write_file(".env", &format!("TEST={}\n", CANARY));
+    // Intentionally construct invalid / deeply nested syntax
+    malformed_ws.write_file("src/nested.js", "((((process.env.TEST))))");
+
+    let malformed_config = EngineConfig {
+        contract_path: malformed_contract,
+        env_path: Some(malformed_env),
+        scan_paths: vec![malformed_ws.path().to_path_buf()],
+        ..EngineConfig::default()
+    };
+    let malformed_report = run_engine(&malformed_config);
+    let malformed_json = render_json(&malformed_report).unwrap();
+    assert!(
+        !malformed_json.contains(CANARY),
+        "Canary leaked in malformed recovery JSON: {}",
+        malformed_json
+    );
+
+    // 4. On Linux, scan /proc/self/mem to verify zeroized memory
+    #[cfg(target_os = "linux")]
+    {
+        use std::io::{Read, Seek, SeekFrom};
+        if let Ok(maps) = fs::read_to_string("/proc/self/maps") {
+            if let Ok(mut mem_file) = fs::File::open("/proc/self/mem") {
+                let canary_bytes = CANARY.as_bytes();
+                for line in maps.lines() {
+                    let parts: Vec<&str> = line.split_whitespace().collect();
+                    if parts.len() >= 2 && parts[1].starts_with('r') {
+                        let range: Vec<&str> = parts[0].split('-').collect();
+                        if range.len() == 2 {
+                            if let (Ok(start), Ok(end)) = (
+                                usize::from_str_radix(range[0], 16),
+                                usize::from_str_radix(range[1], 16),
+                            ) {
+                                let len = end.saturating_sub(start);
+                                if len > 0 && len <= 10 * 1024 * 1024 {
+                                    if mem_file.seek(SeekFrom::Start(start as u64)).is_ok() {
+                                        let mut buf = vec![0u8; len];
+                                        if mem_file.read_exact(&mut buf).is_ok() {
+                                            assert!(
+                                                !buf.windows(canary_bytes.len())
+                                                    .any(|w| w == canary_bytes),
+                                                "Canary detected in /proc/self/mem heap snapshot!"
+                                            );
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

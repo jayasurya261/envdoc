@@ -4,4 +4,4 @@ error[E0609]: no field `value` on type `Definition`
 12 |     let _ = def.value;
    |                 ^^^^^ unknown field
    |
-   = note: available fields are: `name`, `location`, `value_kind`, `is_optional`
+   = note: available fields are: `name`, `location`, `value_kind`, `is_optional`, `annotations`

@@ -121,10 +121,7 @@ Third line'
 #[test]
 fn test_unsupported_syntax_detection_env006() {
     let input = r#"
-VAR_EXP=Hello $USER
-BRACED_EXP=Hello ${USER}
 CMD_SUB=Branch is $(git rev-parse --abbrev-ref HEAD)
-QUOTED_EXP="Welcome $USER"
 QUOTED_CMD="Commit is $(git rev-parse HEAD)"
 ESCAPED_DOLLAR="Price is \$100"
 SINGLE_QUOTED='Literal $USER and $(cmd)'
@@ -133,32 +130,21 @@ SINGLE_QUOTED='Literal $USER and $(cmd)'
     let output = parse(input, ".env");
     let codes: Vec<DiagnosticCode> = output.diagnostics.iter().map(|d| d.code).collect();
 
-    // The first 5 should trigger ENV006; the last 2 should not
-    assert_eq!(
-        codes,
-        vec![
-            DiagnosticCode::ENV006,
-            DiagnosticCode::ENV006,
-            DiagnosticCode::ENV006,
-            DiagnosticCode::ENV006,
-            DiagnosticCode::ENV006,
-        ]
-    );
+    // Command substitutions should trigger ENV006
+    assert_eq!(codes, vec![DiagnosticCode::ENV006, DiagnosticCode::ENV006,]);
 
     for diag in &output.diagnostics {
         assert_eq!(diag.severity, Severity::Warning);
     }
 
     // All definitions are still recorded despite warnings
-    assert_eq!(output.definitions.len(), 7);
+    assert_eq!(output.definitions.len(), 4);
 }
 
 #[test]
 fn test_malformed_syntax_errors_env005() {
     let inputs = [
         "123INVALID_START=true",
-        "DASH-NOT-ALLOWED=true",
-        "DOT.NOT.ALLOWED=true",
         "=MISSING_KEY",
         "GARBAGE_WITHOUT_EQUALS",
         "UNCLOSED_DOUBLE=\"oops",

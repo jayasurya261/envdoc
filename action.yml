@@ -1,0 +1,42 @@
+name: 'EnvDoctor Action'
+description: 'Safe-by-construction, AST-based environment contract auditor'
+author: 'Jayasurya <jayasurya261>'
+branding:
+  icon: 'shield'
+  color: 'blue'
+
+inputs:
+  contract:
+    description: 'Path to environment contract file'
+    required: false
+    default: '.env.example'
+  env:
+    description: 'Optional path to active .env file'
+    required: false
+  format:
+    description: 'Output format (human, json, sarif, junit, github)'
+    required: false
+    default: 'github'
+  fail-on:
+    description: 'Minimum severity to fail CI (error, warning, note)'
+    required: false
+    default: 'warning'
+  args:
+    description: 'Extra CLI arguments'
+    required: false
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Run EnvDoctor
+      shell: bash
+      run: |
+        CMD="envdoctor --contract ${{ inputs.contract }} --format ${{ inputs.format }} --fail-on ${{ inputs.fail-on }}"
+        if [ -n "${{ inputs.env }}" ]; then
+          CMD="$CMD --env ${{ inputs.env }}"
+        fi
+        if [ -n "${{ inputs.args }}" ]; then
+          CMD="$CMD ${{ inputs.args }}"
+        fi
+        $CMD
+

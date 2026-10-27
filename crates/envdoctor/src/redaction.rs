@@ -1,4 +1,5 @@
 use crate::model::value::ValueKind;
+use zeroize::Zeroizing;
 
 /// An unredacted raw environment variable value encountered during tokenization.
 ///
@@ -10,9 +11,9 @@ use crate::model::value::ValueKind;
 ///
 /// Values **never leave the lexer**. The only permissible operation is to classify
 /// this raw value into a [`ValueKind`] metadata token (`Empty`, `NonEmpty`, `MultiLine`),
-/// after which the raw secret bytes are securely dropped and wiped from memory.
+/// after which the raw secret bytes are securely dropped and wiped from memory using [`Zeroizing`].
 pub struct RawEnvValue {
-    inner: Vec<u8>,
+    inner: Zeroizing<Vec<u8>>,
     is_multiline: bool,
 }
 
@@ -20,7 +21,15 @@ impl RawEnvValue {
     /// Constructs a new `RawEnvValue` from a UTF-8 string slice or buffer.
     pub fn new(value: impl AsRef<str>, is_multiline: bool) -> Self {
         Self {
-            inner: value.as_ref().as_bytes().to_vec(),
+            inner: Zeroizing::new(value.as_ref().as_bytes().to_vec()),
+            is_multiline,
+        }
+    }
+
+    /// Constructs a new `RawEnvValue` directly from raw byte slice.
+    pub fn from_bytes(bytes: &[u8], is_multiline: bool) -> Self {
+        Self {
+            inner: Zeroizing::new(bytes.to_vec()),
             is_multiline,
         }
     }
@@ -49,21 +58,10 @@ impl RawEnvValue {
     }
 
     /// Consumes the raw value and converts it into a safe [`ValueKind`].
-    /// The underlying raw bytes are immediately dropped and wiped.
+    /// The underlying raw bytes are immediately dropped and wiped via zeroize.
     #[inline]
     pub fn into_kind(self) -> ValueKind {
         self.classify()
-    }
-}
-
-impl Drop for RawEnvValue {
-    fn drop(&mut self) {
-        // Volatile wipe of underlying bytes to eliminate lingering secrets in heap memory
-        for byte in self.inner.iter_mut() {
-            unsafe {
-                std::ptr::write_volatile(byte, 0);
-            }
-        }
     }
 }
 

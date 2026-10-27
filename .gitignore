@@ -9,4 +9,6 @@ Thumbs.db
 /dummy_fullstack_app/
 packages/npm/bin/*.exe
 packages/npm/bin/envdoctor
+.envdoctor-cache
+**/.envdoctor-cache
 

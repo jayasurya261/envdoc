@@ -37,6 +37,12 @@ impl DialectDiagnostic {
         }
     }
 
+    /// Sets a custom severity on the diagnostic.
+    pub fn with_severity(mut self, severity: Severity) -> Self {
+        self.severity = severity;
+        self
+    }
+
     /// Converts a dialect-specific diagnostic into a standard report `Diagnostic`.
     pub fn into_diagnostic(self, path: RelPath) -> Diagnostic {
         Diagnostic::new(

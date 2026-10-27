@@ -19,8 +19,8 @@ impl EnvName {
         &self.0
     }
 
-    /// Validates whether the name complies with POSIX/standard env identifier rules:
-    /// `[A-Za-z_][A-Za-z0-9_]*`.
+    /// Validates whether the name complies with standard env identifier rules:
+    /// `[A-Za-z_][A-Za-z0-9_.-]*` (supporting dots and dashes for Docker and tooling).
     pub fn is_valid_identifier(&self) -> bool {
         let bytes = self.0.as_bytes();
         if bytes.is_empty() {
@@ -33,10 +33,10 @@ impl EnvName {
             _ => return false,
         }
 
-        // Remaining characters must be [A-Za-z0-9_]
+        // Remaining characters can include [A-Za-z0-9_.-]
         for &b in &bytes[1..] {
             match b {
-                b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'_' => {}
+                b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'_' | b'.' | b'-' => {}
                 _ => return false,
             }
         }
@@ -123,14 +123,15 @@ mod tests {
         assert!(EnvName::new("_SECRET_KEY_123").is_valid_identifier());
         assert!(EnvName::new("PORT").is_valid_identifier());
         assert!(EnvName::new("a").is_valid_identifier());
+        assert!(EnvName::new("FOO-BAR").is_valid_identifier());
+        assert!(EnvName::new("FOO.BAR").is_valid_identifier());
     }
 
     #[test]
     fn test_invalid_identifiers() {
         assert!(!EnvName::new("").is_valid_identifier());
         assert!(!EnvName::new("123PORT").is_valid_identifier());
-        assert!(!EnvName::new("FOO-BAR").is_valid_identifier());
-        assert!(!EnvName::new("FOO.BAR").is_valid_identifier());
         assert!(!EnvName::new("FOO BAR").is_valid_identifier());
+        assert!(!EnvName::new("FOO@BAR").is_valid_identifier());
     }
 }

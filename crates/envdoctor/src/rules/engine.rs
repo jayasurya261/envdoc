@@ -7,11 +7,105 @@ use crate::model::span::Location;
 use crate::rules::contract::Contract;
 use std::collections::{HashMap, HashSet};
 
+/// Standard platform variables ignored by default to reduce noise on system/runtime variables.
+pub const DEFAULT_PLATFORM_VARS: &[&str] = &[
+    "NODE_ENV",
+    "CI",
+    "PATH",
+    "HOME",
+    "USER",
+    "SHELL",
+    "TERM",
+    "TEMP",
+    "TMP",
+    "TMPDIR",
+    "RUST_LOG",
+    "RUST_BACKTRACE",
+    "DEBUG",
+    "PORT",
+    "HOSTNAME",
+];
+
+/// Standard platform prefixes ignored by default.
+pub const DEFAULT_PLATFORM_PREFIXES: &[&str] = &[
+    "GITHUB_",
+    "VERCEL_",
+    "NETLIFY_",
+    "AWS_",
+    "CARGO_",
+    "NEXT_PUBLIC_",
+];
+
 /// Options for configuring contract evaluation.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct AuditOptions {
     /// Environment variable keys to ignore during audit (e.g. `NODE_ENV`, `PATH`).
     pub ignore_keys: HashSet<String>,
+    /// Environment variable key prefixes to ignore (e.g. `GITHUB_`).
+    pub ignore_prefixes: Vec<String>,
+    /// Whether to ignore standard platform variables.
+    pub ignore_platform_vars: bool,
+    /// Whether environment variable comparisons are case-insensitive.
+    pub case_insensitive: bool,
+}
+
+impl Default for AuditOptions {
+    fn default() -> Self {
+        Self {
+            ignore_keys: HashSet::new(),
+            ignore_prefixes: DEFAULT_PLATFORM_PREFIXES
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
+            ignore_platform_vars: true,
+            #[cfg(windows)]
+            case_insensitive: true,
+            #[cfg(not(windows))]
+            case_insensitive: false,
+        }
+    }
+}
+
+impl AuditOptions {
+    /// Checks if a given environment variable key should be ignored.
+    pub fn is_ignored(&self, key: &str) -> bool {
+        if self.ignore_keys.iter().any(|k| {
+            if self.case_insensitive {
+                k.eq_ignore_ascii_case(key)
+            } else {
+                k == key
+            }
+        }) {
+            return true;
+        }
+
+        if self.ignore_platform_vars
+            && DEFAULT_PLATFORM_VARS.iter().any(|pv| {
+                if self.case_insensitive {
+                    pv.eq_ignore_ascii_case(key)
+                } else {
+                    *pv == key
+                }
+            })
+        {
+            return true;
+        }
+
+        for prefix in &self.ignore_prefixes {
+            if self.case_insensitive {
+                if key
+                    .to_ascii_uppercase()
+                    .starts_with(&prefix.to_ascii_uppercase())
+                {
+                    return true;
+                }
+            } else if key.starts_with(prefix) {
+                return true;
+            }
+        }
+
+        false
+    }
 }
 
 /// Evaluates contracts, active environment definitions, and source code references,
@@ -65,7 +159,7 @@ pub fn evaluate_contract(
     // Build reference map: key -> list of references
     let mut ref_map: HashMap<&str, Vec<&Reference>> = HashMap::new();
     for r in references {
-        if !options.ignore_keys.contains(r.name.as_str()) {
+        if !options.is_ignored(r.name.as_str()) {
             ref_map.entry(r.name.as_str()).or_default().push(r);
         }
     }
@@ -74,18 +168,35 @@ pub fn evaluate_contract(
     // Environment variable accessed in source code but absent from .env.example
     for r in references {
         let key_str = r.name.as_str();
-        if options.ignore_keys.contains(key_str) {
+        if options.is_ignored(key_str) {
             continue;
         }
 
-        if !contract_map.contains_key(key_str) {
+        let is_in_contract = if options.case_insensitive {
+            contract
+                .definitions
+                .iter()
+                .any(|d| d.name.as_str().eq_ignore_ascii_case(key_str))
+        } else {
+            contract_map.contains_key(key_str)
+        };
+
+        if !is_in_contract {
+            let mut msg = format!(
+                "Environment variable '{}' referenced in source code is not documented in contract '{}'",
+                key_str, contract.path
+            );
+            if let Some(suggestion) = crate::rules::typo::find_typo_suggestion(
+                key_str,
+                contract.definitions.iter().map(|d| d.name.as_str()),
+            ) {
+                msg.push_str(&format!(" (did you mean '{}'?)", suggestion));
+            }
+
             diagnostics.push(Diagnostic::new(
                 DiagnosticCode::ENV001,
                 Severity::Warning,
-                format!(
-                    "Environment variable '{}' referenced in source code is not documented in contract '{}'",
-                    key_str, contract.path
-                ),
+                msg,
                 Some(r.name.clone()),
                 vec![r.location.clone()],
                 Some(r.evidence_kind),
@@ -97,11 +208,19 @@ pub fn evaluate_contract(
     // Defined in .env.example but not referenced anywhere in scanned source
     for def in &contract.definitions {
         let key_str = def.name.as_str();
-        if options.ignore_keys.contains(key_str) {
+        if options.is_ignored(key_str) {
             continue;
         }
 
-        if !ref_map.contains_key(key_str) {
+        let is_referenced = if options.case_insensitive {
+            references
+                .iter()
+                .any(|r| r.name.as_str().eq_ignore_ascii_case(key_str))
+        } else {
+            ref_map.contains_key(key_str)
+        };
+
+        if !is_referenced {
             diagnostics.push(Diagnostic::new(
                 DiagnosticCode::ENV002,
                 Severity::Note,
@@ -127,11 +246,19 @@ pub fn evaluate_contract(
         // Defined in .env.example but absent in provided .env
         for def in &contract.definitions {
             let key_str = def.name.as_str();
-            if options.ignore_keys.contains(key_str) {
+            if options.is_ignored(key_str) {
                 continue;
             }
 
-            if !env_map.contains_key(key_str) {
+            let found_env_def = if options.case_insensitive {
+                env_defs
+                    .iter()
+                    .find(|d| d.name.as_str().eq_ignore_ascii_case(key_str))
+            } else {
+                env_map.get(key_str).copied()
+            };
+
+            if found_env_def.is_none() {
                 let (severity, desc) = if def.is_optional {
                     (
                         Severity::Note,
@@ -165,12 +292,21 @@ pub fn evaluate_contract(
         // Supplied .env has an empty value for a variable not marked optional
         for env_def in env_defs {
             let key_str = env_def.name.as_str();
-            if options.ignore_keys.contains(key_str) {
+            if options.is_ignored(key_str) {
                 continue;
             }
 
             if env_def.value_kind.is_empty() {
-                if let Some(contract_def) = contract_map.get(key_str) {
+                let matching_contract_def = if options.case_insensitive {
+                    contract
+                        .definitions
+                        .iter()
+                        .find(|d| d.name.as_str().eq_ignore_ascii_case(key_str))
+                } else {
+                    contract_map.get(key_str).copied()
+                };
+
+                if let Some(contract_def) = matching_contract_def {
                     if !contract_def.is_optional {
                         diagnostics.push(Diagnostic::new(
                             DiagnosticCode::ENV007,
@@ -186,6 +322,38 @@ pub fn evaluate_contract(
                     }
                 }
             }
+        }
+    }
+
+    // Rule 6: Leak detection (ENV032)
+    // Warn when a @secret variable or likely-secret name has a client prefix or is marked @public
+    for def in &contract.definitions {
+        let name = def.name.as_str();
+        let upper_name = name.to_ascii_uppercase();
+        let is_likely_secret = def.annotations.is_secret
+            || upper_name.ends_with("_KEY")
+            || upper_name.ends_with("_SECRET")
+            || upper_name.ends_with("_TOKEN")
+            || upper_name.ends_with("_PASSWORD")
+            || upper_name.ends_with("_PRIVATE")
+            || upper_name.ends_with("_AUTH");
+
+        let has_client_prefix = DEFAULT_PLATFORM_PREFIXES
+            .iter()
+            .any(|p| upper_name.starts_with(p));
+
+        if is_likely_secret && (def.annotations.is_public || has_client_prefix) {
+            diagnostics.push(Diagnostic::new(
+                DiagnosticCode::ENV032,
+                Severity::Warning,
+                format!(
+                    "Secret leak risk: variable '{}' is designated or named like a secret but has client-exposed prefix or is marked @public",
+                    name
+                ),
+                Some(def.name.clone()),
+                vec![def.location.clone()],
+                None,
+            ));
         }
     }
 

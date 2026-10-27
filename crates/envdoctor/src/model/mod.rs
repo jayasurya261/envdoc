@@ -3,6 +3,7 @@
 //! Defines strongly typed representations for paths, spans, names,
 //! value classifications, evidence kinds, definitions, and references.
 
+pub mod contract;
 pub mod definition;
 pub mod evidence;
 pub mod name;
@@ -11,6 +12,7 @@ pub mod reference;
 pub mod span;
 pub mod value;
 
+pub use contract::{ContractAnnotations, ContractType};
 pub use definition::Definition;
 pub use evidence::EvidenceKind;
 pub use name::EnvName;

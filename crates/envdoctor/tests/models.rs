@@ -46,7 +46,15 @@ fn test_span_ordering_and_metrics() {
 
 #[test]
 fn test_env_name_validation() {
-    let valid_names = ["API_KEY", "PORT", "_PRIVATE", "DB_HOST_2", "a"];
+    let valid_names = [
+        "API_KEY",
+        "PORT",
+        "_PRIVATE",
+        "DB_HOST_2",
+        "a",
+        "API-KEY",
+        "DB.HOST",
+    ];
     for name in valid_names {
         assert!(
             EnvName::new(name).is_valid_identifier(),
@@ -54,7 +62,7 @@ fn test_env_name_validation() {
         );
     }
 
-    let invalid_names = ["", "123PORT", "API-KEY", "API KEY", "DB.HOST", "FOO$BAR"];
+    let invalid_names = ["", "123PORT", "API KEY", "FOO$BAR"];
     for name in invalid_names {
         assert!(
             !EnvName::new(name).is_valid_identifier(),

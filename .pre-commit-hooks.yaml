@@ -1,0 +1,8 @@
+- id: envdoctor
+  name: EnvDoctor
+  description: Fast, safe-by-construction AST auditor keeping .env.example in sync with source code.
+  entry: envdoctor
+  language: rust
+  files: ^(\.env.*|.*\.(rs|js|ts|jsx|tsx|py|go|sh|bash|tf|yml|yaml)|Dockerfile.*)$
+  pass_filenames: false
+

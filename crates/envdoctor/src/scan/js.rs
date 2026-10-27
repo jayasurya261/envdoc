@@ -10,6 +10,7 @@ use oxc_allocator::Allocator;
 use oxc_ast::ast::*;
 use oxc_parser::Parser;
 use oxc_span::{GetSpan, SourceType};
+use std::collections::{HashMap, HashSet};
 
 /// Result of scanning JavaScript/TypeScript source code.
 ///
@@ -105,6 +106,8 @@ struct AstScanner {
     line_index: LineIndex,
     references: Vec<Reference>,
     diagnostics: Vec<Diagnostic>,
+    const_strings: HashMap<String, String>,
+    local_aliases: HashSet<String>,
 }
 
 impl AstScanner {
@@ -114,6 +117,8 @@ impl AstScanner {
             line_index,
             references: Vec::new(),
             diagnostics: Vec::new(),
+            const_strings: HashMap::new(),
+            local_aliases: HashSet::new(),
         }
     }
 
@@ -155,6 +160,16 @@ impl AstScanner {
         }
     }
 
+    fn is_env_source(&self, expr: &Expression) -> bool {
+        if is_env_object(expr) {
+            return true;
+        }
+        if let Expression::Identifier(id) = expr {
+            return self.local_aliases.contains(id.name.as_str());
+        }
+        false
+    }
+
     fn visit_program<'a>(&mut self, program: &Program<'a>) {
         for stmt in &program.body {
             self.visit_statement(stmt);
@@ -183,7 +198,7 @@ impl AstScanner {
             }
             Statement::ReturnStatement(s) => {
                 if let Some(arg) = &s.argument {
-                    if is_env_object(arg) {
+                    if self.is_env_source(arg) {
                         let span = self.span_of(arg.span());
                         self.emit_escape(span, "Environment object returned directly");
                     } else {
@@ -280,7 +295,7 @@ impl AstScanner {
                 }
                 _ => {
                     if let Some(e) = s.declaration.as_expression() {
-                        if is_env_object(e) {
+                        if self.is_env_source(e) {
                             let span = self.span_of(e.span());
                             self.emit_escape(span, "Environment object exported directly");
                         } else {
@@ -312,14 +327,39 @@ impl AstScanner {
     fn visit_variable_declaration<'a>(&mut self, decl: &VariableDeclaration<'a>) {
         for declarator in &decl.declarations {
             if let Some(init) = &declarator.init {
-                if is_env_object(init) {
+                // Constant string tracking: const K = "X" (screaming snake case or all caps)
+                if decl.kind == oxc_ast::ast::VariableDeclarationKind::Const {
+                    if let BindingPattern::BindingIdentifier(id) = &declarator.id {
+                        let name = id.name.as_str();
+                        if name
+                            .chars()
+                            .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_')
+                            && name.chars().any(|c| c.is_ascii_uppercase())
+                        {
+                            if let Expression::StringLiteral(s) = init {
+                                if let Some(val) = s.value.as_str() {
+                                    self.const_strings
+                                        .insert(id.name.to_string(), val.to_string());
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if self.is_env_source(init) {
                     match &declarator.id {
                         BindingPattern::ObjectPattern(obj) => {
                             self.handle_object_destructuring(obj);
                         }
+                        BindingPattern::BindingIdentifier(id) => {
+                            // Intraprocedural flow: track local alias and emit note for aliasing
+                            self.local_aliases.insert(id.name.to_string());
+                            let span = self.span_of(init.span());
+                            self.emit_escape(span, "Environment object aliased to variable");
+                        }
                         _ => {
                             let span = self.span_of(init.span());
-                            self.emit_escape(span, "Environment object aliased to local variable");
+                            self.emit_escape(span, "Environment object aliased to complex pattern");
                         }
                     }
                 } else {
@@ -330,7 +370,7 @@ impl AstScanner {
     }
 
     fn handle_object_destructuring<'a>(&mut self, obj: &ObjectPattern<'a>) {
-        // Pattern 4: Object destructuring
+        // Pattern 4: Object destructuring with renames and defaults
         for prop in &obj.properties {
             let span = self.span_of(prop.span);
             match &prop.key {
@@ -377,11 +417,11 @@ impl AstScanner {
     }
 
     fn visit_expression<'a>(&mut self, expr: &Expression<'a>) {
-        // Pattern 1: Direct Member Expression (process.env.FOO, import.meta.env.FOO)
+        // Pattern 1: Direct Member Expression (process.env.FOO, e.FOO, Bun.env.FOO, import.meta.env.FOO)
         if let Some(mem) = expr.as_member_expression() {
             match mem {
                 MemberExpression::StaticMemberExpression(m) => {
-                    if is_env_object(&m.object) {
+                    if self.is_env_source(&m.object) {
                         let span = self.span_of(m.span);
                         self.record_reference(
                             m.property.name.as_str(),
@@ -392,7 +432,7 @@ impl AstScanner {
                     }
                 }
                 MemberExpression::ComputedMemberExpression(m) => {
-                    if is_env_object(&m.object) {
+                    if self.is_env_source(&m.object) {
                         let span = self.span_of(m.span);
                         match &m.expression {
                             // Pattern 2: Bracket access with string literal
@@ -407,11 +447,20 @@ impl AstScanner {
                                     let key = t.quasis[0].value.raw.as_str();
                                     self.record_reference(key, span, EvidenceKind::BracketLiteral);
                                 } else {
-                                    // Pattern 7: Dynamic template literal access
                                     self.emit_dynamic_access(span);
                                     for inner in &t.expressions {
                                         self.visit_expression(inner);
                                     }
+                                }
+                            }
+                            // Constant folding for process.env[IDENTIFIER]
+                            Expression::Identifier(id) => {
+                                if let Some(val) = self.const_strings.get(id.name.as_str()).cloned()
+                                {
+                                    self.record_reference(&val, span, EvidenceKind::BracketLiteral);
+                                } else {
+                                    self.emit_dynamic_access(span);
+                                    self.visit_expression(&m.expression);
                                 }
                             }
                             // Pattern 7: Unresolved dynamic bracket access
@@ -427,10 +476,10 @@ impl AstScanner {
             }
         }
 
-        // Pattern 6: Optional Chaining
+        // Pattern 6: Optional Chaining (process.env?.FOO, Bun.env?.FOO, etc.)
         if let Expression::ChainExpression(chain) = expr {
             match &chain.expression {
-                ChainElement::StaticMemberExpression(m) if is_env_object(&m.object) => {
+                ChainElement::StaticMemberExpression(m) if self.is_env_source(&m.object) => {
                     let span = self.span_of(m.span);
                     self.record_reference(
                         m.property.name.as_str(),
@@ -439,7 +488,7 @@ impl AstScanner {
                     );
                     return;
                 }
-                ChainElement::ComputedMemberExpression(m) if is_env_object(&m.object) => {
+                ChainElement::ComputedMemberExpression(m) if self.is_env_source(&m.object) => {
                     let span = self.span_of(m.span);
                     match &m.expression {
                         Expression::StringLiteral(s) => {
@@ -458,6 +507,14 @@ impl AstScanner {
                                 }
                             }
                         }
+                        Expression::Identifier(id) => {
+                            if let Some(val) = self.const_strings.get(id.name.as_str()).cloned() {
+                                self.record_reference(&val, span, EvidenceKind::BracketLiteral);
+                            } else {
+                                self.emit_dynamic_access(span);
+                                self.visit_expression(&m.expression);
+                            }
+                        }
                         _ => {
                             self.emit_dynamic_access(span);
                             self.visit_expression(&m.expression);
@@ -469,138 +526,58 @@ impl AstScanner {
             }
         }
 
-        // Pattern 8: Spread element in object literal `{ ...process.env }`
-        if let Expression::ObjectExpression(obj) = expr {
-            for prop in &obj.properties {
-                match prop {
-                    ObjectPropertyKind::ObjectProperty(p) => {
-                        self.visit_expression(&p.value);
-                    }
-                    ObjectPropertyKind::SpreadProperty(spread) => {
-                        if is_env_object(&spread.argument) {
-                            let span = self.span_of(spread.span);
-                            self.emit_escape(
-                                span,
-                                "Object spread element captures entire environment object",
-                            );
-                        } else {
-                            self.visit_expression(&spread.argument);
+        // Pattern 8: Deno.env.get("FOO")
+        if let Expression::CallExpression(call) = expr {
+            if is_deno_env_get(&call.callee) {
+                if let Some(arg) = call.arguments.first() {
+                    if let Some(e) = arg.as_expression() {
+                        let span = self.span_of(call.span);
+                        if let Expression::StringLiteral(s) = e {
+                            if let Some(val) = s.value.as_str() {
+                                self.record_reference(val, span, EvidenceKind::DirectMember);
+                                return;
+                            }
+                        } else if let Expression::Identifier(id) = e {
+                            if let Some(val) = self.const_strings.get(id.name.as_str()).cloned() {
+                                self.record_reference(&val, span, EvidenceKind::DirectMember);
+                                return;
+                            }
                         }
                     }
+                }
+            }
+        }
+
+        // Object spread checks: { ...process.env } -> emit ENV012
+        if let Expression::ObjectExpression(obj) = expr {
+            for prop in &obj.properties {
+                if let ObjectPropertyKind::SpreadProperty(spread) = prop {
+                    if self.is_env_source(&spread.argument) {
+                        let span = self.span_of(spread.span);
+                        self.emit_escape(span, "Environment object spread into object literal");
+                    } else {
+                        self.visit_expression(&spread.argument);
+                    }
+                } else if let ObjectPropertyKind::ObjectProperty(p) = prop {
+                    self.visit_expression(&p.value);
                 }
             }
             return;
         }
 
-        // Pattern 8: Passing process.env to function call `fn(process.env)`
+        // Call expression: foo(process.env) -> emit ENV012
         if let Expression::CallExpression(call) = expr {
             self.visit_expression(&call.callee);
             for arg in &call.arguments {
-                match arg {
-                    Argument::SpreadElement(spread) => {
-                        if is_env_object(&spread.argument) {
-                            let span = self.span_of(spread.span);
-                            self.emit_escape(
-                                span,
-                                "Argument spread element captures entire environment object",
-                            );
-                        } else {
-                            self.visit_expression(&spread.argument);
-                        }
-                    }
-                    _ => {
-                        if let Some(arg_expr) = arg.as_expression() {
-                            if is_env_object(arg_expr) {
-                                let span = self.span_of(arg_expr.span());
-                                self.emit_escape(
-                                    span,
-                                    "Environment object passed directly as function argument",
-                                );
-                            } else {
-                                self.visit_expression(arg_expr);
-                            }
-                        }
-                    }
-                }
-            }
-            return;
-        }
-
-        // Pattern 8: Assignment expression `myEnv = process.env;` or destructuring
-        if let Expression::AssignmentExpression(assign) = expr {
-            if is_env_object(&assign.right) {
-                if let Some(AssignmentTargetPattern::ObjectAssignmentTarget(obj)) =
-                    assign.left.as_assignment_target_pattern()
-                {
-                    for prop in &obj.properties {
-                        let span = self.span_of(prop.span());
-                        match prop {
-                            AssignmentTargetProperty::AssignmentTargetPropertyIdentifier(id) => {
-                                self.record_reference(
-                                    id.binding.name.as_str(),
-                                    span,
-                                    EvidenceKind::Destructured,
-                                );
-                            }
-                            AssignmentTargetProperty::AssignmentTargetPropertyProperty(p) => {
-                                match &p.name {
-                                    PropertyKey::StaticIdentifier(id) => {
-                                        self.record_reference(
-                                            id.name.as_str(),
-                                            span,
-                                            EvidenceKind::Destructured,
-                                        );
-                                    }
-                                    PropertyKey::StringLiteral(s) => {
-                                        if let Some(val) = s.value.as_str() {
-                                            self.record_reference(
-                                                val,
-                                                span,
-                                                EvidenceKind::Destructured,
-                                            );
-                                        }
-                                    }
-                                    _ => {}
-                                }
-                            }
-                        }
-                    }
-                    if let Some(rest) = &obj.rest {
-                        let span = self.span_of(rest.span);
+                if let Some(e) = arg.as_expression() {
+                    if self.is_env_source(e) {
+                        let span = self.span_of(e.span());
                         self.emit_escape(
                             span,
-                            "Rest pattern destructuring captures entire environment object",
+                            "Environment object passed directly as function argument",
                         );
-                    }
-                } else {
-                    let span = self.span_of(assign.right.span());
-                    self.emit_escape(span, "Environment object assigned to target");
-                }
-            } else {
-                self.visit_expression(&assign.right);
-            }
-            return;
-        }
-
-        // Arrow function expression
-        if let Expression::ArrowFunctionExpression(arrow) = expr {
-            match &arrow.body {
-                ArrowFunctionBody::FunctionBody(b) => {
-                    for inner in &b.statements {
-                        self.visit_statement(inner);
-                    }
-                }
-                _ => {
-                    if let Some(e) = arrow.body.as_expression() {
-                        if is_env_object(e) {
-                            let span = self.span_of(e.span());
-                            self.emit_escape(
-                                span,
-                                "Environment object returned directly from arrow function",
-                            );
-                        } else {
-                            self.visit_expression(e);
-                        }
+                    } else {
+                        self.visit_expression(e);
                     }
                 }
             }
@@ -629,7 +606,7 @@ impl AstScanner {
                 for el in &arr.elements {
                     match el {
                         ArrayExpressionElement::SpreadElement(s) => {
-                            if is_env_object(&s.argument) {
+                            if self.is_env_source(&s.argument) {
                                 let span = self.span_of(s.span);
                                 self.emit_escape(span, "Environment object spread into array");
                             } else {
@@ -639,7 +616,7 @@ impl AstScanner {
                         ArrayExpressionElement::Elision(_) => {}
                         _ => {
                             if let Some(e) = el.as_expression() {
-                                if is_env_object(e) {
+                                if self.is_env_source(e) {
                                     let span = self.span_of(e.span());
                                     self.emit_escape(span, "Environment object placed into array");
                                 } else {
@@ -704,13 +681,13 @@ impl AstScanner {
     }
 }
 
-/// Returns `true` if this expression is `process.env` or `import.meta.env`.
+/// Returns `true` if this expression is `process.env`, `Bun.env`, or `import.meta.env`.
 fn is_env_object(expr: &Expression) -> bool {
     match expr {
         Expression::StaticMemberExpression(mem) => {
             if mem.property.name == "env" {
                 if let Expression::Identifier(id) = &mem.object {
-                    return id.name == "process";
+                    return id.name == "process" || id.name == "Bun";
                 }
                 if let Expression::ImportMeta(_) = &mem.object {
                     return true;
@@ -722,7 +699,7 @@ fn is_env_object(expr: &Expression) -> bool {
             if let ChainElement::StaticMemberExpression(mem) = &chain.expression {
                 if mem.property.name == "env" {
                     if let Expression::Identifier(id) = &mem.object {
-                        return id.name == "process";
+                        return id.name == "process" || id.name == "Bun";
                     }
                     if let Expression::ImportMeta(_) = &mem.object {
                         return true;
@@ -733,4 +710,20 @@ fn is_env_object(expr: &Expression) -> bool {
         }
         _ => false,
     }
+}
+
+/// Returns `true` if this expression is `Deno.env.get`.
+fn is_deno_env_get(callee: &Expression) -> bool {
+    if let Expression::StaticMemberExpression(mem) = callee {
+        if mem.property.name == "get" {
+            if let Expression::StaticMemberExpression(inner) = &mem.object {
+                if inner.property.name == "env" {
+                    if let Expression::Identifier(id) = &inner.object {
+                        return id.name == "Deno";
+                    }
+                }
+            }
+        }
+    }
+    false
 }

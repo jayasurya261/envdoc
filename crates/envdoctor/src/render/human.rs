@@ -104,6 +104,18 @@ pub fn advice_for_diagnostic(diag: &Diagnostic) -> Option<String> {
         DiagnosticCode::IO010 => Some(
             "Increase limits using --max-file-size, --max-files, or --max-depth".into(),
         ),
+        DiagnosticCode::ENV030 => Some(format!(
+            "Ensure value for '{}' in .env matches the type specified in contract",
+            name
+        )),
+        DiagnosticCode::ENV031 => Some(format!(
+            "Ensure value for '{}' in .env matches one of the allowed enum variants in contract",
+            name
+        )),
+        DiagnosticCode::ENV032 => Some(format!(
+            "Remove client-exposed prefix from '{}' or avoid marking sensitive variables @public",
+            name
+        )),
     }
 }
 

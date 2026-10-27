@@ -1,0 +1,31 @@
+name: Monthly Dependency Bump & Corpus Diff
+
+on:
+  schedule:
+    - cron: '0 0 1 * *' # Run on the 1st of every month
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  dependency-bump:
+    name: Dependency Update & Shadow Corpus Verification
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Update Cargo Dependencies
+        run: cargo update
+
+      - name: Run Shadow Mode & Conformance Tests
+        run: |
+          cargo test --test avoid_breaking_tests
+          cargo test --test conformance_tests
+          cargo test --all-targets
+
+      - name: Verify report.v1 Schema Conformance
+        run: cargo test test_report_schema_conformance
+

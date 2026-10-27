@@ -79,6 +79,7 @@ fn test_discover_standard_filters_and_extensions() {
         follow_symlinks: false,
         max_files: 100,
         max_depth: 10,
+        languages: vec!["all".to_string()],
     };
     let discovered = discover_files(&opts);
     assert!(!discovered.file_count_limit_exceeded);
@@ -102,6 +103,7 @@ fn test_discover_standard_filters_and_extensions() {
         follow_symlinks: false,
         max_files: 100,
         max_depth: 10,
+        languages: vec!["all".to_string()],
     };
     let discovered_all = discover_files(&opts_ignored);
     assert!(discovered_all.files.len() > 3);
@@ -120,6 +122,7 @@ fn test_discover_max_files_limit() {
         follow_symlinks: false,
         max_files: 2,
         max_depth: 10,
+        languages: vec!["all".to_string()],
     };
     let discovered = discover_files(&opts);
     assert!(discovered.file_count_limit_exceeded);
