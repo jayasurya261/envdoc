@@ -7,6 +7,7 @@ use crate::model::span::Span;
 use crate::model::value::ValueKind;
 use crate::redaction::RawEnvValue;
 use std::collections::{HashMap, HashSet};
+use zeroize::Zeroizing;
 
 /// Duplicate key resolution strategy in `.env` files.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -470,7 +471,7 @@ impl<'a> Parser<'a> {
         let quote_start_pos = self.pos;
 
         self.advance(); // consume opening "
-        let mut raw_val = String::new();
+        let mut raw_val = Zeroizing::new(Vec::new());
         let mut is_multiline = false;
         let mut has_unsupported = false;
         let mut closed = false;
@@ -490,50 +491,50 @@ impl<'a> Parser<'a> {
                             is_multiline = true;
                         }
                         b'n' => {
-                            raw_val.push('\n');
+                            raw_val.push(b'\n');
                             self.advance();
                         }
                         b'r' => {
-                            raw_val.push('\r');
+                            raw_val.push(b'\r');
                             self.advance();
                         }
                         b't' => {
-                            raw_val.push('\t');
+                            raw_val.push(b'\t');
                             self.advance();
                         }
                         b'\\' => {
-                            raw_val.push('\\');
+                            raw_val.push(b'\\');
                             self.advance();
                         }
                         b'"' => {
-                            raw_val.push('"');
+                            raw_val.push(b'"');
                             self.advance();
                         }
                         b'$' => {
-                            raw_val.push('$');
+                            raw_val.push(b'$');
                             self.advance();
                         }
                         _ => {
-                            raw_val.push('\\');
-                            raw_val.push(next as char);
+                            raw_val.push(b'\\');
+                            raw_val.push(next);
                             self.advance();
                         }
                     }
                 } else {
-                    raw_val.push('\\');
+                    raw_val.push(b'\\');
                 }
             } else if b == b'$' {
                 // Command substitution like $(cmd) or `cmd` is unsupported
                 if self.is_command_substitution() {
                     has_unsupported = true;
                 }
-                raw_val.push(b as char);
+                raw_val.push(b);
                 self.advance();
             } else {
                 if b == b'\n' || b == b'\r' {
                     is_multiline = true;
                 }
-                raw_val.push(b as char);
+                raw_val.push(b);
                 self.advance();
             }
         }
@@ -558,8 +559,9 @@ impl<'a> Parser<'a> {
             return None;
         }
 
-        let var_deps = self.extract_expansions(&raw_val, env_name);
-        let raw = RawEnvValue::new(raw_val, is_multiline);
+        let utf8_val = std::str::from_utf8(&raw_val).unwrap_or("");
+        let var_deps = self.extract_expansions(utf8_val, env_name);
+        let raw = RawEnvValue::from_bytes(&raw_val, is_multiline);
         Some((raw.into_kind(), has_unsupported, var_deps))
     }
 
@@ -572,7 +574,7 @@ impl<'a> Parser<'a> {
         let quote_start_pos = self.pos;
 
         self.advance(); // consume opening '
-        let mut raw_val = String::new();
+        let mut raw_val = Zeroizing::new(Vec::new());
         let mut is_multiline = false;
         let mut closed = false;
 
@@ -585,7 +587,7 @@ impl<'a> Parser<'a> {
                 if b == b'\n' || b == b'\r' {
                     is_multiline = true;
                 }
-                raw_val.push(b as char);
+                raw_val.push(b);
                 self.advance();
             }
         }
@@ -611,12 +613,12 @@ impl<'a> Parser<'a> {
         }
 
         // Single-quoted values are verbatim: no expansions or escapes
-        let raw = RawEnvValue::new(raw_val, is_multiline);
+        let raw = RawEnvValue::from_bytes(&raw_val, is_multiline);
         Some((raw.into_kind(), false, Vec::new()))
     }
 
     fn parse_unquoted_value(&mut self, env_name: &EnvName) -> (ValueKind, bool, Vec<String>) {
-        let mut raw_val = String::new();
+        let mut raw_val = Zeroizing::new(Vec::new());
         let mut has_unsupported = false;
 
         while let Some(b) = self.peek() {
@@ -627,32 +629,43 @@ impl<'a> Parser<'a> {
                     self.advance(); // consume newline
                     continue;
                 }
-                raw_val.push(b as char);
+                raw_val.push(b);
                 self.advance();
             } else if b == b'\n' || b == b'\r' {
                 self.advance();
                 break;
             } else if b == b'#' {
                 // Inline comments only if preceded by whitespace or at beginning
-                if raw_val.is_empty() || raw_val.ends_with(' ') || raw_val.ends_with('\t') {
+                if raw_val.is_empty()
+                    || raw_val.last() == Some(&b' ')
+                    || raw_val.last() == Some(&b'\t')
+                {
                     self.skip_to_eol();
                     break;
                 } else {
-                    raw_val.push(b as char);
+                    raw_val.push(b);
                     self.advance();
                 }
             } else {
                 if b == b'$' && self.is_command_substitution() {
                     has_unsupported = true;
                 }
-                raw_val.push(b as char);
+                raw_val.push(b);
                 self.advance();
             }
         }
 
-        let trimmed = raw_val.trim_end();
-        let var_deps = self.extract_expansions(trimmed, env_name);
-        let raw = RawEnvValue::new(trimmed, false);
+        while let Some(&last) = raw_val.last() {
+            if last == b' ' || last == b'\t' {
+                raw_val.pop();
+            } else {
+                break;
+            }
+        }
+
+        let utf8_val = std::str::from_utf8(&raw_val).unwrap_or("");
+        let var_deps = self.extract_expansions(utf8_val, env_name);
+        let raw = RawEnvValue::from_bytes(&raw_val, false);
         (raw.into_kind(), has_unsupported, var_deps)
     }
 

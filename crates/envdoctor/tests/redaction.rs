@@ -38,6 +38,15 @@ impl TempWorkspace {
         full_path
     }
 
+    fn write_bytes(&self, rel_path: &str, content: &[u8]) -> PathBuf {
+        let full_path = self.dir.join(rel_path);
+        if let Some(parent) = full_path.parent() {
+            fs::create_dir_all(parent).unwrap();
+        }
+        fs::write(&full_path, content).unwrap();
+        full_path
+    }
+
     fn path(&self) -> &Path {
         &self.dir
     }
@@ -285,10 +294,13 @@ fn test_canary_in_process_engine_and_panic_boundaries() {
         ".env.example",
         "DATABASE_URL=postgres://localhost\nSECRET_KEY=placeholder\n",
     );
-    let env_file = ws.write_file(
-        ".env",
-        &format!("DATABASE_URL=postgres://localhost\nSECRET_KEY={}\n", CANARY),
-    );
+    let env_file = {
+        let mut b = zeroize::Zeroizing::new(Vec::new());
+        b.extend_from_slice(b"DATABASE_URL=postgres://localhost\nSECRET_KEY=");
+        b.extend_from_slice(CANARY.as_bytes());
+        b.extend_from_slice(b"\n");
+        ws.write_bytes(".env", &b)
+    };
     ws.write_file(
         "src/app.ts",
         "const db = process.env.DATABASE_URL;\nconst k = process.env.SECRET_KEY;\n",
@@ -324,7 +336,13 @@ fn test_canary_in_process_engine_and_panic_boundaries() {
     // 3. Scan panic messages caught by scanner unwind boundaries
     let malformed_ws = TempWorkspace::new("canary_malformed_unwind");
     let malformed_contract = malformed_ws.write_file(".env.example", "TEST=foo\n");
-    let malformed_env = malformed_ws.write_file(".env", &format!("TEST={}\n", CANARY));
+    let malformed_env = {
+        let mut b = zeroize::Zeroizing::new(Vec::new());
+        b.extend_from_slice(b"TEST=");
+        b.extend_from_slice(CANARY.as_bytes());
+        b.extend_from_slice(b"\n");
+        malformed_ws.write_bytes(".env", &b)
+    };
     // Intentionally construct invalid / deeply nested syntax
     malformed_ws.write_file("src/nested.js", "((((process.env.TEST))))");
 
@@ -342,7 +360,7 @@ fn test_canary_in_process_engine_and_panic_boundaries() {
         malformed_json
     );
 
-    // 4. On Linux, scan /proc/self/mem to verify zeroized memory
+    // 4. On Linux, scan dynamic writable heap memory (/proc/self/mem) to verify zeroized memory
     #[cfg(target_os = "linux")]
     {
         use std::io::{Read, Seek, SeekFrom};
@@ -351,7 +369,15 @@ fn test_canary_in_process_engine_and_panic_boundaries() {
                 let canary_bytes = CANARY.as_bytes();
                 for line in maps.lines() {
                     let parts: Vec<&str> = line.split_whitespace().collect();
-                    if parts.len() >= 2 && parts[1].starts_with('r') {
+                    // Scan dynamic writable memory (heap / anonymous mmaps).
+                    // Skip file-backed executable mappings because the binary on disk contains the compiled CANARY string constant in .rodata.
+                    let is_file_backed = parts.len() >= 6 && parts[5].starts_with('/');
+                    let is_writable_dynamic = parts.len() >= 2
+                        && parts[1].starts_with('r')
+                        && parts[1].contains('w')
+                        && !is_file_backed;
+
+                    if is_writable_dynamic {
                         let range: Vec<&str> = parts[0].split('-').collect();
                         if range.len() == 2 {
                             if let (Ok(start), Ok(end)) = (
