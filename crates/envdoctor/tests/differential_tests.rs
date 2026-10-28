@@ -187,4 +187,3 @@ SECRET=$(cat /etc/passwd)
         "Must flag dangerous command substitution as ENV006"
     );
 }
-
