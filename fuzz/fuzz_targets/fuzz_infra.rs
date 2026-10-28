@@ -1,0 +1,13 @@
+#![no_main]
+
+use libfuzzer_sys::fuzz_target;
+
+fuzz_target!(|data: &[u8]| {
+    if let Ok(s) = std::str::from_utf8(data) {
+        let _ = envdoctor::scan::infra::scan_infra_source(s, "Dockerfile");
+        let _ = envdoctor::scan::infra::scan_infra_source(s, "main.tf");
+        let _ = envdoctor::scan::infra::scan_infra_source(s, "terragrunt.hcl");
+        let _ = envdoctor::scan::infra::scan_infra_source(s, "docker-compose.yml");
+    }
+});
+

@@ -7,9 +7,11 @@ edition = "2021"
 [package.metadata]
 cargo-fuzz = true
 
+[workspace]
+
 [dependencies]
 libfuzzer-sys = "0.4"
-envdoctor = { path = "../crates/envdoctor" }
+envdoctor = { package = "envdoc", path = "../crates/envdoctor", features = ["lang-python", "lang-go", "lang-infra"] }
 
 [[bin]]
 name = "fuzz_dialect"
@@ -17,3 +19,26 @@ path = "fuzz_targets/fuzz_dialect.rs"
 test = false
 doc = false
 
+[[bin]]
+name = "fuzz_js"
+path = "fuzz_targets/fuzz_js.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fuzz_python"
+path = "fuzz_targets/fuzz_python.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fuzz_go"
+path = "fuzz_targets/fuzz_go.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fuzz_infra"
+path = "fuzz_targets/fuzz_infra.rs"
+test = false
+doc = false

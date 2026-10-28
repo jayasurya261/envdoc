@@ -32,9 +32,15 @@ def get_keys():
     return api_key, port, db_host
 
 class AppSettings(BaseSettings):
+    model_config = SettingsConfigDict(env_prefix="APP_", case_sensitive=False)
     database_url: str
     redis_port: int = 6379
     custom_name: str = Field(validation_alias="CUSTOM_ALIAS_VAR")
+
+class V1Settings(BaseSettings):
+    class Config:
+        env_prefix = "V1_"
+    secret_key: str
 "#;
 
     let res = scan_source(py_source, "app/settings.py");
@@ -43,9 +49,10 @@ class AppSettings(BaseSettings):
     assert!(names.contains(&"API_KEY"));
     assert!(names.contains(&"PORT"));
     assert!(names.contains(&"DB_HOST"));
-    assert!(names.contains(&"DATABASE_URL"));
-    assert!(names.contains(&"REDIS_PORT"));
+    assert!(names.contains(&"APP_DATABASE_URL"));
+    assert!(names.contains(&"APP_REDIS_PORT"));
     assert!(names.contains(&"CUSTOM_ALIAS_VAR"));
+    assert!(names.contains(&"V1_SECRET_KEY"));
 }
 
 #[test]
@@ -61,10 +68,10 @@ import (
 func main() {
     port := os.Getenv("APP_PORT")
     dbPass, _ := os.LookupEnv("DB_PASSWORD")
-    token := viper.GetString("AUTH_TOKEN")
+    viper.BindEnv("AUTH_TOKEN")
+    viper.BindEnv("db.user", "DB_USER")
     _ = port
     _ = dbPass
-    _ = token
 }
 "#;
 
@@ -74,6 +81,7 @@ func main() {
     assert!(names.contains(&"APP_PORT"));
     assert!(names.contains(&"DB_PASSWORD"));
     assert!(names.contains(&"AUTH_TOKEN"));
+    assert!(names.contains(&"DB_USER"));
 }
 
 #[test]
@@ -133,6 +141,31 @@ jobs:
     let names: Vec<_> = res.references.iter().map(|r| r.name.as_str()).collect();
     assert!(names.contains(&"GHA_DEPLOY_FLAG"));
     assert!(names.contains(&"PROD_API_SECRET"));
+
+    // 5. Terraform & Terragrunt
+    let tf_file = r#"
+variable "database_password" {
+  type = string
+}
+locals {
+  direct_token = "prefix_${TF_VAR_API_TOKEN}"
+}
+"#;
+    let res = scan_source(tf_file, "main.tf");
+    let names: Vec<_> = res.references.iter().map(|r| r.name.as_str()).collect();
+    assert!(names.contains(&"TF_VAR_database_password"));
+    assert!(names.contains(&"TF_VAR_API_TOKEN"));
+
+    let terragrunt_file = r#"
+inputs = {
+  db_host = get_env("DATABASE_HOST", "localhost")
+  api_key = get_env("APP_API_KEY")
+}
+"#;
+    let res = scan_source(terragrunt_file, "terragrunt.hcl");
+    let names: Vec<_> = res.references.iter().map(|r| r.name.as_str()).collect();
+    assert!(names.contains(&"DATABASE_HOST"));
+    assert!(names.contains(&"APP_API_KEY"));
 }
 
 #[test]

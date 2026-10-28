@@ -75,6 +75,11 @@ fn test_content_hash_cache_workflow() {
 
     let cache1 = ScanCache::load(&cache_file).expect("Cache must exist after run 1");
     assert!(cache1.entries.len() >= 2);
+    // Verify BLAKE3 256-bit cryptographic hash length (64 hex characters)
+    for entry in cache1.entries.values() {
+        assert_eq!(entry.content_hash.len(), 64);
+        assert!(entry.content_hash.chars().all(|c| c.is_ascii_hexdigit()));
+    }
 
     // Run 2: Re-run with no modifications should hit cache
     let report2 = run_engine(&config);
@@ -95,6 +100,20 @@ fn test_content_hash_cache_workflow() {
     no_cache_config.use_cache = false;
     let report4 = run_engine(&no_cache_config);
     assert_eq!(report3.summary, report4.summary);
+
+    // Run 5: Configuration change (e.g. language set) invalidates cache
+    let mut lang_config = config.clone();
+    lang_config.languages = vec!["rust".to_string()];
+    let report5 = run_engine(&lang_config);
+    // Under languages=["rust"], TypeScript file_b is skipped, so REDIS_HOST is not reported
+    assert_eq!(
+        report5
+            .diagnostics
+            .iter()
+            .filter(|d| d.code == DiagnosticCode::ENV001)
+            .count(),
+        0
+    );
 }
 
 #[test]

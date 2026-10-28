@@ -471,7 +471,7 @@ impl<'a> Parser<'a> {
         let quote_start_pos = self.pos;
 
         self.advance(); // consume opening "
-        let mut raw_val = Zeroizing::new(Vec::new());
+        let mut raw_val = Zeroizing::new(Vec::with_capacity(256));
         let mut is_multiline = false;
         let mut has_unsupported = false;
         let mut closed = false;
@@ -561,7 +561,7 @@ impl<'a> Parser<'a> {
 
         let utf8_val = std::str::from_utf8(&raw_val).unwrap_or("");
         let var_deps = self.extract_expansions(utf8_val, env_name);
-        let raw = RawEnvValue::from_bytes(&raw_val, is_multiline);
+        let raw = RawEnvValue::from_zeroizing(raw_val, is_multiline);
         Some((raw.into_kind(), has_unsupported, var_deps))
     }
 
@@ -574,7 +574,7 @@ impl<'a> Parser<'a> {
         let quote_start_pos = self.pos;
 
         self.advance(); // consume opening '
-        let mut raw_val = Zeroizing::new(Vec::new());
+        let mut raw_val = Zeroizing::new(Vec::with_capacity(256));
         let mut is_multiline = false;
         let mut closed = false;
 
@@ -613,12 +613,12 @@ impl<'a> Parser<'a> {
         }
 
         // Single-quoted values are verbatim: no expansions or escapes
-        let raw = RawEnvValue::from_bytes(&raw_val, is_multiline);
+        let raw = RawEnvValue::from_zeroizing(raw_val, is_multiline);
         Some((raw.into_kind(), false, Vec::new()))
     }
 
     fn parse_unquoted_value(&mut self, env_name: &EnvName) -> (ValueKind, bool, Vec<String>) {
-        let mut raw_val = Zeroizing::new(Vec::new());
+        let mut raw_val = Zeroizing::new(Vec::with_capacity(256));
         let mut has_unsupported = false;
 
         while let Some(b) = self.peek() {
@@ -665,7 +665,7 @@ impl<'a> Parser<'a> {
 
         let utf8_val = std::str::from_utf8(&raw_val).unwrap_or("");
         let var_deps = self.extract_expansions(utf8_val, env_name);
-        let raw = RawEnvValue::from_bytes(&raw_val, false);
+        let raw = RawEnvValue::from_zeroizing(raw_val, false);
         (raw.into_kind(), has_unsupported, var_deps)
     }
 

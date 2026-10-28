@@ -1,0 +1,24 @@
+# Configuration for cargo-mutants mutation testing
+
+# Examine source files in the core crate
+examine_globs = [
+    "crates/envdoctor/src/dialect/**/*.rs",
+    "crates/envdoctor/src/rules/**/*.rs",
+    "crates/envdoctor/src/scan/prefilter.rs",
+    "crates/envdoctor/src/cache.rs",
+]
+
+# Exclude generated code, test-only fixtures, and debug renders
+exclude_globs = [
+    "crates/envdoctor/src/bin/**",
+    "tests/**",
+    "benches/**",
+]
+
+# Max seconds per mutated test run
+timeout = 30
+
+# Test command to execute for each mutation
+test_tool = "cargo"
+args = ["test", "--workspace"]
+

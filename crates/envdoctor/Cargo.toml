@@ -27,6 +27,7 @@ lang-go = []
 lang-infra = []
 
 [dependencies]
+blake3 = { workspace = true }
 clap = { workspace = true }
 ignore = { workspace = true }
 oxc_allocator = { workspace = true }

@@ -34,6 +34,14 @@ impl RawEnvValue {
         }
     }
 
+    /// Constructs a new `RawEnvValue` taking ownership of an existing zeroizing buffer.
+    pub fn from_zeroizing(inner: Zeroizing<Vec<u8>>, is_multiline: bool) -> Self {
+        Self {
+            inner,
+            is_multiline,
+        }
+    }
+
     /// Returns `true` if the value has zero length.
     #[inline]
     pub fn is_empty(&self) -> bool {

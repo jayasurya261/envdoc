@@ -2,8 +2,9 @@
 //!
 //! Most files in a project never touch environment variables. AST parsing, macro expansion,
 //! and thread spawning for thousands of files is computationally expensive.
-//! By searching for candidate byte sequences (`env`, `ENV`, `getenv`, `viper`, etc.) in
-//! a single memory pass, we can rule out 90%+ of files in microseconds without AST allocation.
+//! By searching for candidate byte sequences (`env`, `getenv`, `viper`, etc.) in
+//! a single memory pass with ASCII case-insensitivity, we can rule out 90%+ of files
+//! in microseconds without AST allocation and with ZERO false skips.
 
 /// Inspects source bytes and returns `true` if candidate keywords for environment variable
 /// access are present for the given file type.
@@ -15,7 +16,8 @@ pub fn quick_prefilter(bytes: &[u8], ext: &str, file_name: &str) -> bool {
         || lower_file.starts_with("dockerfile.")
         || lower_file.ends_with(".dockerfile")
     {
-        return contains_subslice(bytes, b"ENV") || contains_subslice(bytes, b"ARG");
+        return contains_subslice_ignore_ascii_case(bytes, b"ENV")
+            || contains_subslice_ignore_ascii_case(bytes, b"ARG");
     }
 
     if lower_file == "docker-compose.yml"
@@ -25,9 +27,8 @@ pub fn quick_prefilter(bytes: &[u8], ext: &str, file_name: &str) -> bool {
         || ext == "yml"
         || ext == "yaml"
     {
-        return contains_subslice(bytes, b"env")
-            || contains_subslice(bytes, b"ENV")
-            || contains_subslice(bytes, b"secrets");
+        return contains_subslice_ignore_ascii_case(bytes, b"env")
+            || contains_subslice_ignore_ascii_case(bytes, b"secret");
     }
 
     if matches!(ext, "sh" | "bash" | "zsh") {
@@ -35,46 +36,41 @@ pub fn quick_prefilter(bytes: &[u8], ext: &str, file_name: &str) -> bool {
         return bytes.contains(&b'$');
     }
 
-    if matches!(ext, "tf" | "tfvars") {
-        return contains_subslice(bytes, b"env")
-            || contains_subslice(bytes, b"ENV")
-            || contains_subslice(bytes, b"TF_VAR");
+    if matches!(ext, "tf" | "tfvars" | "hcl") {
+        return contains_subslice_ignore_ascii_case(bytes, b"env")
+            || contains_subslice_ignore_ascii_case(bytes, b"tf_var")
+            || contains_subslice_ignore_ascii_case(bytes, b"variable ");
     }
 
     // Language source files
     match ext {
         "rs" => {
             // Rust: std::env::var, env!("..."), #[clap(env = "...")]
-            contains_subslice(bytes, b"env") || contains_subslice(bytes, b"ENV")
+            contains_subslice_ignore_ascii_case(bytes, b"env")
         }
         "js" | "ts" | "jsx" | "tsx" | "mjs" | "cjs" | "mts" | "cts" | "vue" | "svelte"
         | "astro" => {
             // JS/TS: process.env, Bun.env, Deno.env, import.meta.env
-            contains_subslice(bytes, b"env") || contains_subslice(bytes, b"ENV")
+            contains_subslice_ignore_ascii_case(bytes, b"env")
         }
         "py" | "pyi" | "pyw" => {
-            // Python: os.environ, os.getenv, BaseSettings, SettingsConfigDict
-            contains_subslice(bytes, b"environ")
-                || contains_subslice(bytes, b"getenv")
-                || contains_subslice(bytes, b"BaseSettings")
-                || contains_subslice(bytes, b"env")
-                || contains_subslice(bytes, b"ENV")
+            // Python: os.environ, os.getenv, from os import environ as e, BaseSettings
+            contains_subslice_ignore_ascii_case(bytes, b"env")
+                || contains_subslice_ignore_ascii_case(bytes, b"environ")
+                || contains_subslice_ignore_ascii_case(bytes, b"basesettings")
         }
         "go" => {
-            // Go: os.Getenv, os.LookupEnv, viper
-            contains_subslice(bytes, b"Getenv")
-                || contains_subslice(bytes, b"LookupEnv")
-                || contains_subslice(bytes, b"viper")
-                || contains_subslice(bytes, b"env")
-                || contains_subslice(bytes, b"ENV")
+            // Go: os.Getenv, os.LookupEnv, os.Environ, viper.BindEnv
+            contains_subslice_ignore_ascii_case(bytes, b"env")
+                || contains_subslice_ignore_ascii_case(bytes, b"viper")
         }
         _ => true,
     }
 }
 
-/// Fast byte substring search without external dependencies.
+/// Fast case-insensitive ASCII byte substring search.
 #[inline]
-fn contains_subslice(haystack: &[u8], needle: &[u8]) -> bool {
+pub fn contains_subslice_ignore_ascii_case(haystack: &[u8], needle: &[u8]) -> bool {
     if needle.is_empty() {
         return true;
     }
@@ -83,13 +79,21 @@ fn contains_subslice(haystack: &[u8], needle: &[u8]) -> bool {
     }
 
     let first = needle[0];
-    let needle_tail = &needle[1..];
     let max_search_idx = haystack.len() - needle.len();
 
     let mut i = 0;
     while i <= max_search_idx {
-        if haystack[i] == first && &haystack[i + 1..i + needle.len()] == needle_tail {
-            return true;
+        if haystack[i].eq_ignore_ascii_case(&first) {
+            let mut matches = true;
+            for j in 1..needle.len() {
+                if !haystack[i + j].eq_ignore_ascii_case(&needle[j]) {
+                    matches = false;
+                    break;
+                }
+            }
+            if matches {
+                return true;
+            }
         }
         i += 1;
     }
@@ -109,6 +113,11 @@ mod tests {
             "main.rs"
         ));
         assert!(quick_prefilter(b"#[clap(env = \"PORT\")]", "rs", "cli.rs"));
+        assert!(quick_prefilter(
+            b"println!(\"{}\", env!(\"CARGO\"));",
+            "rs",
+            "lib.rs"
+        ));
         assert!(!quick_prefilter(
             b"fn add(a: i32, b: i32) -> i32 { a + b }",
             "rs",
@@ -128,6 +137,11 @@ mod tests {
             "js",
             "server.js"
         ));
+        assert!(quick_prefilter(
+            b"const d = Deno.env.get(\"URL\");",
+            "ts",
+            "deno.ts"
+        ));
         assert!(!quick_prefilter(
             b"export function calculate() { return 42; }",
             "ts",
@@ -136,9 +150,20 @@ mod tests {
     }
 
     #[test]
-    fn test_prefilter_python() {
+    fn test_prefilter_python_including_aliases() {
         assert!(quick_prefilter(
             b"import os\nx = os.getenv('KEY')",
+            "py",
+            "app.py"
+        ));
+        // Aliased import
+        assert!(quick_prefilter(
+            b"from os import environ as e\nval = e['DATABASE_URL']",
+            "py",
+            "app.py"
+        ));
+        assert!(quick_prefilter(
+            b"from os import getenv as g\nval = g('SECRET')",
             "py",
             "app.py"
         ));
@@ -155,14 +180,28 @@ mod tests {
     }
 
     #[test]
-    fn test_prefilter_go() {
+    fn test_prefilter_go_case_variations() {
+        // Go Getenv with capital G
         assert!(quick_prefilter(
             b"val := os.Getenv(\"PORT\")",
             "go",
             "main.go"
         ));
+        // Go LookupEnv with capital L and capital E
         assert!(quick_prefilter(
-            b"port := viper.GetString(\"PORT\")",
+            b"val, ok := os.LookupEnv(\"PORT\")",
+            "go",
+            "main.go"
+        ));
+        // Go Environ
+        assert!(quick_prefilter(
+            b"for _, e := range os.Environ() {}",
+            "go",
+            "main.go"
+        ));
+        // Viper BindEnv
+        assert!(quick_prefilter(
+            b"viper.BindEnv(\"port\", \"PORT\")",
             "go",
             "config.go"
         ));
@@ -174,8 +213,13 @@ mod tests {
     }
 
     #[test]
-    fn test_prefilter_infra() {
+    fn test_prefilter_infra_and_terraform() {
         assert!(quick_prefilter(b"ENV PORT=8080", "", "Dockerfile"));
+        assert!(quick_prefilter(
+            b"ARG DEBIAN_FRONTEND=noninteractive",
+            "",
+            "Dockerfile"
+        ));
         assert!(!quick_prefilter(
             b"FROM alpine:latest\nRUN echo hello",
             "",
@@ -183,5 +227,18 @@ mod tests {
         ));
         assert!(quick_prefilter(b"echo $MY_VAR", "sh", "deploy.sh"));
         assert!(!quick_prefilter(b"echo hello world", "sh", "hello.sh"));
+
+        // Terragrunt get_env
+        assert!(quick_prefilter(
+            b"port = get_env(\"APP_PORT\", \"8080\")",
+            "hcl",
+            "terragrunt.hcl"
+        ));
+        // Terraform variable definition
+        assert!(quick_prefilter(
+            b"variable \"db_password\" {\n  type = string\n}",
+            "tf",
+            "variables.tf"
+        ));
     }
 }

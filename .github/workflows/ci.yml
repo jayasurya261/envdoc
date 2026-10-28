@@ -75,3 +75,8 @@ jobs:
         uses: EmbarkStudios/cargo-deny-action@v2
         with:
           command: check
+
+      - name: RustSec Security Advisory Audit
+        uses: rustsec/audit-check@v1.4.1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}

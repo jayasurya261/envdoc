@@ -1,0 +1,17 @@
+{
+  "name": "@envdoctor/cli-darwin-x64",
+  "version": "0.1.1",
+  "description": "macOS Intel (x64) binary for EnvDoctor",
+  "os": ["darwin"],
+  "cpu": ["x64"],
+  "bin": {
+    "envdoctor": "bin/envdoctor"
+  },
+  "files": [
+    "bin",
+    "README.md"
+  ],
+  "author": "Jayasurya <jayasurya261>",
+  "license": "MIT OR Apache-2.0"
+}
+

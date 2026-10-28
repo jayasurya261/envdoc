@@ -181,6 +181,7 @@ impl<'a> PythonScannerImpl<'a> {
 
     /// Handles Pydantic BaseSettings class declarations:
     /// class Settings(BaseSettings):
+    ///     model_config = SettingsConfigDict(env_prefix="MY_APP_", case_sensitive=False)
     ///     database_url: str
     ///     api_key: str = "default"
     fn handle_class_def(&mut self, class_def: &ast::StmtClassDef) {
@@ -198,23 +199,96 @@ impl<'a> PythonScannerImpl<'a> {
             return;
         }
 
+        let mut env_prefix = String::new();
+        let mut case_sensitive = false;
+
+        // Extract class-level configuration (Pydantic v2 model_config or v1 Config class)
+        for item in &class_def.body {
+            match item {
+                // Pydantic v2: model_config = SettingsConfigDict(env_prefix="...", case_sensitive=...)
+                // or model_config = {"env_prefix": "...", "case_sensitive": ...}
+                Stmt::Assign(assign) => {
+                    for target in &assign.targets {
+                        if let Expr::Name(name) = target {
+                            if name.id.as_str() == "model_config" {
+                                Self::extract_config_dict(
+                                    &assign.value,
+                                    &mut env_prefix,
+                                    &mut case_sensitive,
+                                );
+                            }
+                        }
+                    }
+                }
+                Stmt::AnnAssign(ann) => {
+                    if let Expr::Name(name) = ann.target.as_ref() {
+                        if name.id.as_str() == "model_config" {
+                            if let Some(val) = &ann.value {
+                                Self::extract_config_dict(
+                                    val,
+                                    &mut env_prefix,
+                                    &mut case_sensitive,
+                                );
+                            }
+                        }
+                    }
+                }
+                // Pydantic v1:
+                // class Config:
+                //     env_prefix = "..."
+                //     case_sensitive = True
+                Stmt::ClassDef(nested_class) if nested_class.name.as_str() == "Config" => {
+                    for config_item in &nested_class.body {
+                        if let Stmt::Assign(config_assign) = config_item {
+                            for target in &config_assign.targets {
+                                if let Expr::Name(name) = target {
+                                    if name.id.as_str() == "env_prefix" {
+                                        if let Expr::StringLiteral(s) = config_assign.value.as_ref()
+                                        {
+                                            env_prefix = s.value.to_str().to_string();
+                                        }
+                                    } else if name.id.as_str() == "case_sensitive" {
+                                        if let Expr::BooleanLiteral(b) =
+                                            config_assign.value.as_ref()
+                                        {
+                                            case_sensitive = b.value;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+
         for item in &class_def.body {
             if let Stmt::AnnAssign(ann) = item {
                 if let Expr::Name(name) = ann.target.as_ref() {
                     let field_name = name.id.as_str();
+                    if field_name == "model_config" {
+                        continue;
+                    }
                     let span = self.to_span(ann.range());
 
-                    // Pydantic converts field names to uppercase for env matching: db_host -> DB_HOST
-                    let upper_name = field_name.to_ascii_uppercase();
-                    self.record_reference(&upper_name, span, EvidenceKind::DirectMember);
+                    // Map field name with env_prefix and case sensitivity
+                    let combined = format!("{}{}", env_prefix, field_name);
+                    let env_var_name = if case_sensitive {
+                        combined
+                    } else {
+                        combined.to_ascii_uppercase()
+                    };
+                    self.record_reference(&env_var_name, span, EvidenceKind::DirectMember);
 
-                    // Check if Field(validation_alias="CUSTOM_NAME") or alias="..."
+                    // Check if Field(validation_alias="CUSTOM_NAME"), alias="...", or env="..." (v1)
                     if let Some(val) = &ann.value {
                         if let Expr::Call(call) = val.as_ref() {
                             for kw in &call.arguments.keywords {
                                 if let Some(arg_name) = &kw.arg {
                                     if arg_name.as_str() == "validation_alias"
                                         || arg_name.as_str() == "alias"
+                                        || arg_name.as_str() == "env"
                                     {
                                         if let Expr::StringLiteral(s) = &kw.value {
                                             self.record_reference(
@@ -230,6 +304,43 @@ impl<'a> PythonScannerImpl<'a> {
                     }
                 }
             }
+        }
+    }
+
+    fn extract_config_dict(expr: &Expr, env_prefix: &mut String, case_sensitive: &mut bool) {
+        match expr {
+            Expr::Call(call) => {
+                for kw in &call.arguments.keywords {
+                    if let Some(arg_name) = &kw.arg {
+                        if arg_name.as_str() == "env_prefix" {
+                            if let Expr::StringLiteral(s) = &kw.value {
+                                *env_prefix = s.value.to_str().to_string();
+                            }
+                        } else if arg_name.as_str() == "case_sensitive" {
+                            if let Expr::BooleanLiteral(b) = &kw.value {
+                                *case_sensitive = b.value;
+                            }
+                        }
+                    }
+                }
+            }
+            Expr::Dict(dict) => {
+                for item in &dict.items {
+                    if let Some(Expr::StringLiteral(key_lit)) = &item.key {
+                        let k = key_lit.value.to_str();
+                        if k == "env_prefix" {
+                            if let Expr::StringLiteral(s) = &item.value {
+                                *env_prefix = s.value.to_str().to_string();
+                            }
+                        } else if k == "case_sensitive" {
+                            if let Expr::BooleanLiteral(b) = &item.value {
+                                *case_sensitive = b.value;
+                            }
+                        }
+                    }
+                }
+            }
+            _ => {}
         }
     }
 

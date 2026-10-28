@@ -299,7 +299,7 @@ fn test_canary_in_process_engine_and_panic_boundaries() {
         "DATABASE_URL=postgres://localhost\nSECRET_KEY=placeholder\n",
     );
     let env_file = {
-        let mut b = zeroize::Zeroizing::new(Vec::new());
+        let mut b = zeroize::Zeroizing::new(Vec::with_capacity(512));
         b.extend_from_slice(b"DATABASE_URL=postgres://localhost\nSECRET_KEY=");
         b.extend_from_slice(IN_PROCESS_CANARY.as_bytes());
         b.extend_from_slice(b"\n");
@@ -341,7 +341,7 @@ fn test_canary_in_process_engine_and_panic_boundaries() {
     let malformed_ws = TempWorkspace::new("canary_malformed_unwind");
     let malformed_contract = malformed_ws.write_file(".env.example", "TEST=foo\n");
     let malformed_env = {
-        let mut b = zeroize::Zeroizing::new(Vec::new());
+        let mut b = zeroize::Zeroizing::new(Vec::with_capacity(512));
         b.extend_from_slice(b"TEST=");
         b.extend_from_slice(IN_PROCESS_CANARY.as_bytes());
         b.extend_from_slice(b"\n");

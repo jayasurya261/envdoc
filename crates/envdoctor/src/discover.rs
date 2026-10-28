@@ -144,7 +144,7 @@ pub fn is_supported_source_file_for_languages(path: &Path, languages: &[String])
     }
 
     if allow_infra
-        && (matches!(ext, "sh" | "bash" | "zsh" | "tf" | "tfvars")
+        && (matches!(ext, "sh" | "bash" | "zsh" | "tf" | "tfvars" | "hcl")
             || (matches!(ext, "yml" | "yaml") && path.to_string_lossy().contains(".github")))
     {
         return true;

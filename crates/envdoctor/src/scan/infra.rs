@@ -21,8 +21,11 @@ pub fn scan_infra_source(source_text: &str, path: impl Into<RelPath>) -> ScanRes
     } else if file_str.ends_with(".sh") || file_str.ends_with(".bash") || file_str.ends_with(".zsh")
     {
         scan_shell(source_text, rel_path)
-    } else if file_str.ends_with(".tf") || file_str.ends_with(".tfvars") {
-        scan_terraform(source_text, rel_path)
+    } else if file_str.ends_with(".tf")
+        || file_str.ends_with(".tfvars")
+        || file_str.ends_with(".hcl")
+    {
+        scan_terraform_and_terragrunt(source_text, rel_path)
     } else {
         // YAML files: Docker compose, GitHub Actions, Kubernetes
         scan_yaml_infra(source_text, rel_path)
@@ -141,21 +144,71 @@ fn scan_shell(source_text: &str, path: RelPath) -> ScanResult {
     }
 }
 
-fn scan_terraform(source_text: &str, path: RelPath) -> ScanResult {
+fn scan_terraform_and_terragrunt(source_text: &str, path: RelPath) -> ScanResult {
     let mut references = Vec::new();
 
     for (idx, line) in source_text.lines().enumerate() {
         let line_num = (idx + 1) as u32;
-        // Search for env("VAR") or TF_VAR_
-        if let Some(pos) = line.find("env(") {
-            let after = &line[pos + 4..];
+
+        // 1. Terragrunt: get_env("ENV_NAME", "default") or get_env("ENV_NAME")
+        let mut search_idx = 0;
+        while let Some(pos) = line[search_idx..].find("get_env(") {
+            let abs_pos = search_idx + pos;
+            let after = &line[abs_pos + 8..];
+            let trimmed = after.trim_start();
+            if let Some(quote) = trimmed.chars().next() {
+                if quote == '"' || quote == '\'' {
+                    if let Some(end_q) = trimmed[1..].find(quote) {
+                        let key = &trimmed[1..1 + end_q];
+                        let env_name = EnvName::new(key);
+                        if env_name.is_valid_identifier() {
+                            let col = (abs_pos + 1) as u32;
+                            references.push(Reference::new(
+                                env_name,
+                                path.clone(),
+                                Span::point(line_num, col, 0),
+                                EvidenceKind::DirectMember,
+                            ));
+                        }
+                    }
+                }
+            }
+            search_idx = abs_pos + 8;
+        }
+
+        // 2. Direct TF_VAR_ environment variable references
+        let mut tf_search = 0;
+        while let Some(pos) = line[tf_search..].find("TF_VAR_") {
+            let abs_pos = tf_search + pos;
+            let rest = &line[abs_pos..];
+            let end_idx = rest
+                .find(|c: char| !c.is_ascii_alphanumeric() && c != '_')
+                .unwrap_or(rest.len());
+            let key = &rest[..end_idx];
+            let env_name = EnvName::new(key);
+            if env_name.is_valid_identifier() {
+                references.push(Reference::new(
+                    env_name,
+                    path.clone(),
+                    Span::point(line_num, (abs_pos + 1) as u32, 0),
+                    EvidenceKind::DirectMember,
+                ));
+            }
+            tf_search = abs_pos + end_idx.max(1);
+        }
+
+        // 3. Terraform input variable declaration: variable "name" maps to TF_VAR_name
+        let trimmed_line = line.trim();
+        if let Some(rest) = trimmed_line.strip_prefix("variable ") {
+            let after = rest.trim_start();
             if let Some(quote) = after.chars().next() {
                 if quote == '"' || quote == '\'' {
                     if let Some(end_q) = after[1..].find(quote) {
-                        let key = &after[1..1 + end_q];
-                        let env_name = EnvName::new(key);
+                        let var_name = &after[1..1 + end_q];
+                        let tf_env = format!("TF_VAR_{}", var_name);
+                        let env_name = EnvName::new(&tf_env);
                         if env_name.is_valid_identifier() {
-                            let col = (pos + 1) as u32;
+                            let col = (line.find(var_name).unwrap_or(0) + 1) as u32;
                             references.push(Reference::new(
                                 env_name,
                                 path.clone(),

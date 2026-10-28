@@ -16,8 +16,6 @@ use crate::diagnostics::severity::Severity;
 use crate::model::path::RelPath;
 use crate::model::span::{Location, Span};
 use std::panic::AssertUnwindSafe;
-use std::sync::mpsc;
-use std::time::Duration;
 
 pub use js::ScanResult;
 
@@ -126,7 +124,7 @@ impl Scanner for InfraScanner {
             || lower == "docker-compose.yaml"
             || lower == "compose.yml"
             || lower == "compose.yaml"
-            || matches!(ext, "sh" | "bash" | "zsh" | "tf" | "tfvars")
+            || matches!(ext, "sh" | "bash" | "zsh" | "tf" | "tfvars" | "hcl")
             || matches!(ext, "yml" | "yaml")
     }
     fn scan(&self, source_text: &str, path: &str) -> ScanResult {
@@ -149,8 +147,8 @@ pub fn registered_scanners() -> Vec<Box<dyn Scanner>> {
 /// Unified entry point to scan source code for environment variable accesses.
 ///
 /// Dispatches to the appropriate AST scanner based on file extension and name.
-/// Runs in a thread with an isolated 4MB stack and a 5-second per-file timeout
-/// to prevent stack overflows on deeply nested ASTs or parser lockups.
+/// Runs inside a panic unwind boundary (`catch_unwind`) on Rayon worker threads
+/// (with 4MB worker stacks configured globally) without spawning unjoined OS threads.
 pub fn scan_source(source_text: &str, path: impl Into<RelPath>) -> ScanResult {
     let rel_path = path.into();
     let ext = rel_path
@@ -164,7 +162,7 @@ pub fn scan_source(source_text: &str, path: impl Into<RelPath>) -> ScanResult {
         .and_then(|f| f.to_str())
         .unwrap_or("");
 
-    // Performance pre-filter: quick byte search avoids parsing or spawning threads
+    // Performance pre-filter: quick byte search avoids parsing
     // if the file does not contain any candidate keywords for environment variables.
     if !prefilter::quick_prefilter(source_text.as_bytes(), ext, file_name) {
         return ScanResult {
@@ -179,83 +177,32 @@ pub fn scan_source(source_text: &str, path: impl Into<RelPath>) -> ScanResult {
         source_text.to_string()
     };
 
-    let path_clone = rel_path.to_string();
-    let ext_owned = ext.to_string();
-    let file_name_owned = file_name.to_string();
-    let text_clone = text.clone();
-
-    let (sender, receiver) = mpsc::channel();
-    let builder = std::thread::Builder::new()
-        .name("envdoc-ast-scanner".into())
-        .stack_size(4 * 1024 * 1024);
-
-    let handle = builder.spawn(move || {
-        let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
-            let scanners = registered_scanners();
-            for scanner in scanners {
-                if scanner.can_scan(&ext_owned, &file_name_owned) {
-                    return scanner.scan(&text_clone, path_clone.as_str());
-                }
+    let path_str = rel_path.to_string();
+    let unwind_res = std::panic::catch_unwind(AssertUnwindSafe(|| {
+        let scanners = registered_scanners();
+        for scanner in scanners {
+            if scanner.can_scan(ext, file_name) {
+                return scanner.scan(&text, path_str.as_str());
             }
-            // Fallback: try JS scanner
-            js::scan_source(&text_clone, path_clone.as_str())
-        }));
-        let _ = sender.send(result);
-    });
-
-    match handle {
-        Ok(_) => match receiver.recv_timeout(Duration::from_secs(5)) {
-            Ok(Ok(scan_result)) => scan_result,
-            Ok(Err(_panic_err)) => ScanResult {
-                references: Vec::new(),
-                diagnostics: vec![Diagnostic::new(
-                    DiagnosticCode::ENV011,
-                    Severity::Warning,
-                    "Parser panicked on deeply nested or malformed syntax; recovered safely"
-                        .to_string(),
-                    None,
-                    vec![Location::new(rel_path, Span::point(1, 1, 0))],
-                    None,
-                )],
-            },
-            Err(_) => ScanResult {
-                references: Vec::new(),
-                diagnostics: vec![Diagnostic::new(
-                    DiagnosticCode::ENV011,
-                    Severity::Warning,
-                    "Parser timed out after 5s; file may be adversarial or excessively nested"
-                        .to_string(),
-                    None,
-                    vec![Location::new(rel_path, Span::point(1, 1, 0))],
-                    None,
-                )],
-            },
-        },
-        Err(_) => {
-            // Fallback in-thread if thread spawn fails
-            let ext_clone = ext.to_string();
-            let file_name_clone = file_name.to_string();
-            let fallback_res = std::panic::catch_unwind(AssertUnwindSafe(|| {
-                let scanners = registered_scanners();
-                for scanner in scanners {
-                    if scanner.can_scan(&ext_clone, &file_name_clone) {
-                        return scanner.scan(&text, rel_path.as_str());
-                    }
-                }
-                js::scan_source(&text, rel_path.as_str())
-            }));
-            fallback_res.unwrap_or_else(|_| ScanResult {
-                references: Vec::new(),
-                diagnostics: vec![Diagnostic::new(
-                    DiagnosticCode::ENV011,
-                    Severity::Warning,
-                    "Parser panicked on malformed input; recovered safely".to_string(),
-                    None,
-                    vec![Location::new(rel_path, Span::point(1, 1, 0))],
-                    None,
-                )],
-            })
         }
+        // Fallback: try JS scanner
+        js::scan_source(&text, path_str.as_str())
+    }));
+
+    match unwind_res {
+        Ok(scan_result) => scan_result,
+        Err(_panic_err) => ScanResult {
+            references: Vec::new(),
+            diagnostics: vec![Diagnostic::new(
+                DiagnosticCode::ENV011,
+                Severity::Warning,
+                "Parser panicked on deeply nested or malformed syntax; recovered safely"
+                    .to_string(),
+                None,
+                vec![Location::new(rel_path, Span::point(1, 1, 0))],
+                None,
+            )],
+        },
     }
 }
 

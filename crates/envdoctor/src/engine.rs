@@ -3,7 +3,7 @@
 
 #![allow(clippy::disallowed_methods)]
 
-use crate::cache::{compute_content_hash, ScanCache, DEFAULT_CACHE_FILE};
+use crate::cache::{compute_config_hash, compute_content_hash, ScanCache, DEFAULT_CACHE_FILE};
 use crate::diagnostics::code::DiagnosticCode;
 use crate::diagnostics::diagnostic::Diagnostic;
 use crate::diagnostics::report::Report;
@@ -143,9 +143,10 @@ fn read_env_file_bounded(
         return EnvReadResult::LimitExceeded(len);
     }
 
-    // Read directly into Zeroizing buffer to avoid leaving secrets in un-wiped heap memory
-    let mut zeroizing_bytes =
-        zeroize::Zeroizing::new(Vec::with_capacity(len.min(max_bytes) as usize));
+    // Read directly into Zeroizing buffer to avoid leaving secrets in un-wiped heap memory.
+    // Allocate extra capacity (+128) so read_to_end EOF probe does not reallocate buffer on heap.
+    let alloc_size = (len.min(max_bytes) as usize) + 128;
+    let mut zeroizing_bytes = zeroize::Zeroizing::new(Vec::with_capacity(alloc_size));
     let mut reader = (&mut file).take(max_bytes + 1);
     if let Err(e) = reader.read_to_end(&mut zeroizing_bytes) {
         return EnvReadResult::IoError(e.to_string());
@@ -223,7 +224,7 @@ fn validate_env_values_against_contract(
 }
 
 enum SourceReadResult {
-    Ok(String, u64, u64),
+    Ok(String, u64, String),
     LimitExceeded(u64),
     NotAFile,
     IoError(String),
@@ -293,6 +294,11 @@ fn read_source_file_bounded(path: &Path, max_bytes: u64, max_line_len: usize) ->
 
 /// Executes a full audit pass given an engine configuration.
 pub fn run_engine(config: &EngineConfig) -> Report {
+    // Configure bounded 4MB worker thread stacks on Rayon's global threadpool
+    let _ = rayon::ThreadPoolBuilder::new()
+        .stack_size(4 * 1024 * 1024)
+        .build_global();
+
     let mut diagnostics: Vec<Diagnostic> = Vec::new();
     let mut scanned_files = 0;
     let mut skipped_files = 0;
@@ -567,8 +573,23 @@ pub fn run_engine(config: &EngineConfig) -> Report {
         .clone()
         .unwrap_or_else(|| PathBuf::from(DEFAULT_CACHE_FILE));
 
+    let config_hash = compute_config_hash(
+        config.max_file_size,
+        config.max_line_length,
+        config.max_total_bytes,
+        config.max_diagnostics,
+        config.dialect_options.duplicate_strategy as u8,
+        &config.languages,
+    );
+    let languages_str = config.languages.join(",");
+
     let mut cache = if config.use_cache {
-        ScanCache::load(&cache_path).unwrap_or_default()
+        ScanCache::load_matching(&cache_path, &config_hash, &languages_str).unwrap_or_else(|| {
+            let mut c = ScanCache::new();
+            c.config_hash = config_hash.clone();
+            c.languages = languages_str.clone();
+            c
+        })
     } else {
         ScanCache::new()
     };
@@ -607,7 +628,7 @@ pub fn run_engine(config: &EngineConfig) -> Report {
         Fresh {
             rel_path: RelPath,
             bytes_read: u64,
-            content_hash: u64,
+            content_hash: String,
             references: Vec<crate::model::reference::Reference>,
             diagnostics: Vec<Diagnostic>,
         },
@@ -662,7 +683,7 @@ pub fn run_engine(config: &EngineConfig) -> Report {
                     SourceReadResult::Ok(content, bytes_read, content_hash) => {
                         if use_cache {
                             if let Some((cached_refs, cached_diags)) =
-                                cache.get(rel_path.as_str(), content_hash)
+                                cache.get(rel_path.as_str(), &content_hash)
                             {
                                 return Outcome::Cached {
                                     bytes_read,
@@ -822,6 +843,8 @@ pub fn run_engine(config: &EngineConfig) -> Report {
 
     // Save cache after scan
     if config.use_cache {
+        cache.config_hash = config_hash;
+        cache.languages = languages_str;
         let active_paths: Vec<String> = candidate_files
             .iter()
             .map(|p| RelPath::new(p).to_string())
