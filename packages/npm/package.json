@@ -1,6 +1,6 @@
 {
   "name": "envdoc-cli",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Fast, safe-by-construction AST environment contract auditor keeping .env.example in sync with Rust, TypeScript, and JavaScript source code.",
   "main": "./bin/envdoctor.js",
   "bin": {
@@ -8,7 +8,7 @@
     "envdoctor": "bin/envdoctor.js"
   },
   "files": [
-    "bin",
+    "bin/envdoctor.js",
     "README.md",
     "LICENSE-MIT",
     "LICENSE-APACHE"
@@ -42,10 +42,10 @@
     "node": ">=16.0.0"
   },
   "optionalDependencies": {
-    "@envdoctor/cli-win32-x64": "0.1.1",
-    "@envdoctor/cli-linux-x64": "0.1.1",
-    "@envdoctor/cli-darwin-arm64": "0.1.1",
-    "@envdoctor/cli-darwin-x64": "0.1.1"
+    "envdoc-cli-win32-x64": "0.1.2",
+    "envdoc-cli-linux-x64": "0.1.2",
+    "envdoc-cli-darwin-arm64": "0.1.2",
+    "envdoc-cli-darwin-x64": "0.1.2"
   },
   "preferGlobal": true
 }

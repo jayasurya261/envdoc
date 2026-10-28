@@ -1,6 +1,6 @@
 {
-  "name": "@envdoctor/cli-darwin-arm64",
-  "version": "0.1.1",
+  "name": "envdoc-cli-darwin-arm64",
+  "version": "0.1.2",
   "description": "macOS Apple Silicon (ARM64) binary for EnvDoctor",
   "os": ["darwin"],
   "cpu": ["arm64"],
@@ -14,4 +14,3 @@
   "author": "Jayasurya <jayasurya261>",
   "license": "MIT OR Apache-2.0"
 }
-

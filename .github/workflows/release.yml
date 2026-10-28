@@ -6,41 +6,45 @@ on:
       - 'v*'
   workflow_dispatch:
     inputs:
-      tag_name:
-        description: 'Release Tag Name (e.g. v0.1.0)'
-        required: true
-        default: 'v0.1.0'
+      version:
+        description: 'Release version (e.g. 0.1.2)'
+        required: false
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  build-binaries:
-    name: Build (${{ matrix.target }})
+  build-and-publish-platforms:
+    name: Build & Publish (${{ matrix.platform }})
     runs-on: ${{ matrix.os }}
-    permissions:
-      contents: read
     strategy:
       fail-fast: false
       matrix:
         include:
-          # Linux x86_64
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-            artifact_name: envdoctor
-            archive_name: envdoctor-${{ github.ref_name || inputs.tag_name }}-x86_64-unknown-linux-gnu.tar.gz
-
-          # macOS Apple Silicon (ARM64)
-          - os: macos-latest
-            target: aarch64-apple-darwin
-            artifact_name: envdoctor
-            archive_name: envdoctor-${{ github.ref_name || inputs.tag_name }}-aarch64-apple-darwin.tar.gz
-
-          # Windows x86_64
+            platform: linux-x64
+            bin_name: envdoctor
+            bin_ext: ''
           - os: windows-latest
             target: x86_64-pc-windows-msvc
-            artifact_name: envdoctor.exe
-            archive_name: envdoctor-${{ github.ref_name || inputs.tag_name }}-x86_64-pc-windows-msvc.zip
+            platform: win32-x64
+            bin_name: envdoctor.exe
+            bin_ext: '.exe'
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            platform: darwin-arm64
+            bin_name: envdoctor
+            bin_ext: ''
+          - os: macos-13
+            target: x86_64-apple-darwin
+            platform: darwin-x64
+            bin_name: envdoctor
+            bin_ext: ''
 
     steps:
       - name: Checkout repository
@@ -51,67 +55,114 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
-      - name: Build Release Binary
-        run: cargo build --release --locked --target ${{ matrix.target }} -p envdoc
+      - name: Build release binary
+        run: cargo build --release -p envdoc --target ${{ matrix.target }}
 
-      - name: Package Artifacts (Unix)
-        if: runner.os != 'Windows'
+      - name: Prepare platform npm package
+        shell: bash
         run: |
-          cd target/${{ matrix.target }}/release
-          tar -czf ../../../${{ matrix.archive_name }} ${{ matrix.artifact_name }}
-          cd ../../..
-          shasum -a 256 ${{ matrix.archive_name }} > ${{ matrix.archive_name }}.sha256
+          VERSION="${{ github.event.inputs.version }}"
+          if [ -z "$VERSION" ]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          fi
+          
+          PLATFORM_DIR="packages/npm/platforms/${{ matrix.platform }}"
+          mkdir -p "$PLATFORM_DIR/bin"
+          
+          # Copy compiled binary
+          cp "target/${{ matrix.target }}/release/${{ matrix.bin_name }}" "$PLATFORM_DIR/bin/${{ matrix.bin_name }}"
+          chmod +x "$PLATFORM_DIR/bin/${{ matrix.bin_name }}" || true
+          
+          # Update version in platform package.json
+          node -e "
+            const fs = require('fs');
+            const pkgPath = '$PLATFORM_DIR/package.json';
+            const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+            pkg.version = '$VERSION';
+            fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n');
+          "
+          
+          # Stage artifact for GitHub Releases
+          mkdir -p release-binaries
+          cp "target/${{ matrix.target }}/release/${{ matrix.bin_name }}" "release-binaries/envdoctor-${{ matrix.target }}${{ matrix.bin_ext }}"
 
-      - name: Package Artifacts (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
+      - name: Setup Node.js for npm publishing
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Publish platform package to npm
+        shell: bash
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          Compress-Archive -Path target/${{ matrix.target }}/release/${{ matrix.artifact_name }} -DestinationPath ${{ matrix.archive_name }}
-          $hash = (Get-FileHash -Path ${{ matrix.archive_name }} -Algorithm SHA256).Hash.ToLower()
-          "$hash  ${{ matrix.archive_name }}" | Out-File -FilePath "${{ matrix.archive_name }}.sha256" -Encoding utf8
+          if [ -n "$NODE_AUTH_TOKEN" ]; then
+            npm publish "packages/npm/platforms/${{ matrix.platform }}" --access public
+          else
+            echo "NPM_TOKEN secret not configured; skipping npm publish."
+          fi
 
-      - name: Upload Build Artifact
+      - name: Upload release binary artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.archive_name }}
-          path: |
-            ${{ matrix.archive_name }}
-            ${{ matrix.archive_name }}.sha256
+          name: envdoctor-${{ matrix.platform }}
+          path: release-binaries/*
 
-  create-release:
-    name: Create GitHub Release
-    needs: build-binaries
+  publish-main-and-github-release:
+    name: Publish Main Package & GitHub Release
+    needs: build-and-publish-platforms
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      id-token: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Download all build artifacts
+      - name: Download all release binaries
         uses: actions/download-artifact@v4
         with:
-          path: release-assets
+          path: all-binaries
           merge-multiple: true
 
-      - name: Install Cosign
-        uses: sigstore/cosign-installer@v3
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
 
-      - name: Sign Artifacts with Sigstore / Cosign
+      - name: Update version and dependencies in main npm package
+        shell: bash
         run: |
-          cd release-assets
-          for file in *.tar.gz *.zip; do
-            if [ -f "$file" ]; then
-              cosign sign-blob --yes --bundle "${file}.bundle" "$file"
-            fi
-          done
+          VERSION="${{ github.event.inputs.version }}"
+          if [ -z "$VERSION" ]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          fi
+          
+          node -e "
+            const fs = require('fs');
+            const pkgPath = 'packages/npm/package.json';
+            const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+            pkg.version = '$VERSION';
+            if (pkg.optionalDependencies) {
+              for (const k of Object.keys(pkg.optionalDependencies)) {
+                pkg.optionalDependencies[k] = '$VERSION';
+              }
+            }
+            fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n');
+          "
 
-      - name: Create Release
+      - name: Publish envdoc-cli to npm
+        shell: bash
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -n "$NODE_AUTH_TOKEN" ]; then
+            npm publish packages/npm --access public
+          else
+            echo "NPM_TOKEN secret not configured; skipping npm publish."
+          fi
+
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name || inputs.tag_name }}
-          files: release-assets/*
+          files: all-binaries/*
           generate_release_notes: true
-          draft: false
-          prerelease: false

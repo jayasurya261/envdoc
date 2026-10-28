@@ -1,6 +1,6 @@
 {
-  "name": "@envdoctor/cli-linux-x64",
-  "version": "0.1.1",
+  "name": "envdoc-cli-linux-x64",
+  "version": "0.1.2",
   "description": "Linux x64 binary for EnvDoctor",
   "os": ["linux"],
   "cpu": ["x64"],
@@ -14,4 +14,3 @@
   "author": "Jayasurya <jayasurya261>",
   "license": "MIT OR Apache-2.0"
 }
-
