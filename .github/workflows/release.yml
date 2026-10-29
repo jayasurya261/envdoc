@@ -40,7 +40,7 @@ jobs:
             platform: darwin-arm64
             bin_name: envdoctor
             bin_ext: ''
-          - os: macos-13
+          - os: macos-latest
             target: x86_64-apple-darwin
             platform: darwin-x64
             bin_name: envdoctor
