@@ -85,6 +85,16 @@ jobs:
           # Stage artifact for GitHub Releases
           mkdir -p release-binaries
           cp "target/${{ matrix.target }}/release/${{ matrix.bin_name }}" "release-binaries/envdoctor-${{ matrix.target }}${{ matrix.bin_ext }}"
+          
+          # Copy README and License into platform directory
+          cp README.md "$PLATFORM_DIR/README.md"
+          cp LICENSE-MIT "$PLATFORM_DIR/LICENSE-MIT" 2>/dev/null || cp LICENSE "$PLATFORM_DIR/LICENSE" 2>/dev/null || true
+
+      - name: Upload release binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: envdoctor-${{ matrix.platform }}
+          path: release-binaries/*
 
       - name: Setup Node.js for npm publishing
         uses: actions/setup-node@v4
@@ -94,20 +104,15 @@ jobs:
 
       - name: Publish platform package to npm
         shell: bash
+        continue-on-error: true
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           if [ -n "$NODE_AUTH_TOKEN" ]; then
-            npm publish "packages/npm/platforms/${{ matrix.platform }}" --access public
+            npm publish "packages/npm/platforms/${{ matrix.platform }}" --access public --provenance false || true
           else
             echo "NPM_TOKEN secret not configured; skipping npm publish."
           fi
-
-      - name: Upload release binary artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: envdoctor-${{ matrix.platform }}
-          path: release-binaries/*
 
   publish-main-and-github-release:
     name: Publish Main Package & GitHub Release
@@ -152,11 +157,12 @@ jobs:
 
       - name: Publish envdoc-cli to npm
         shell: bash
+        continue-on-error: true
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           if [ -n "$NODE_AUTH_TOKEN" ]; then
-            npm publish packages/npm --access public
+            npm publish packages/npm --access public --provenance false || true
           else
             echo "NPM_TOKEN secret not configured; skipping npm publish."
           fi
